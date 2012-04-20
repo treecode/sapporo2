@@ -1,0 +1,62 @@
+CXX = g++
+CC  = gcc
+LD  = g++ 
+F90  = gfortran
+
+.SUFFIXES: .o .cpp
+
+OCLPATH  = /opt/AMDAPP
+
+OFLAGS = -O0
+OFLAGS = -O3
+OFLAGS += -g -Wall -fopenmp  -D_OCL_
+CXXFLAGS =  -fPIC $(OFLAGS) -I$(OCLPATH)/include 
+
+
+
+LDFLAGS = -L$(OCLPATH)/lib -lOpenCL -fopenmp 
+
+
+INCLUDEPATH = ./include
+CXXFLAGS  += -I$(INCLUDEPATH) -I./
+
+SRCPATH = src
+SRC = sapporohostclass.cpp sapporoG6lib.cpp sapporoYeblib.cpp sapporoG5lib.cpp sapporo6thlib.cpp
+OBJ = $(SRC:%.cpp=%.o)
+
+PROG1 = test_gravity_block_6th
+
+OBJ = test_gravity_block_6th.o
+
+LIBOBJ = sapporohostclass.o sapporoG6lib.o sapporoYeblib.o sapporoG5lib.o
+LIBTARGET = sapporo_ocl
+
+
+all:	  $(LIBTARGET) $(OBJ) $(PROG1)
+
+$(PROG1): $(OBJ)
+	$(LD) $(LDFLAGS) $^ -o $@ -L./ -l$(LIBTARGET)
+
+$(LIBTARGET): $(LIBOBJ)
+	/bin/rm -rf lib$@.a
+	ar qv lib$@.a $^
+	ranlib lib$@.a
+
+
+%.o: $(SRCPATH)/%.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+clean:
+	/bin/rm -rf *.o $(PROG1)
+
+$(OBJ): $(INCLUDEPATH)/*.h
+
+sapporohostclass.o : sapporohostclass.h sapdevclass.h $(INCLUDEPATH)/defines.h
+libsapporo_ocl.a : sapporohostclass.o
+
+
+
+
+
+
+
