@@ -1318,10 +1318,13 @@ double sapporo::evaluate_gravity(int ni, int nj)
   //number of blocks of the warpsize/wavefront size
   int multipleSize = 1;
   
-  if(ni > 128)
-    multipleSize = sapdevice->evalgravKernel.get_workGroupMultiple();
-  else if(ni > 96)
-    multipleSize =  sapdevice->evalgravKernel.get_workGroupMultiple() / 2;
+  if(integrationOrder <= FOURTH)
+  {
+    if(ni > 128)
+      multipleSize = sapdevice->evalgravKernel.get_workGroupMultiple();
+    else if(ni > 96)
+      multipleSize =  sapdevice->evalgravKernel.get_workGroupMultiple() / 2;
+  }
   
   int temp = ni / multipleSize; 
   if((ni % multipleSize) != 0 ) temp++;
@@ -1339,8 +1342,12 @@ double sapporo::evaluate_gravity(int ni, int nj)
 //
   //Multiple blocks if it fits
   //if(ni <= 256) 	q = min(sapdevice->evalgravKernel.get_workGroupMaxSize()/ni, 32);
-  if(ni <= 256 && ni >= 32) 	
-  	q = min(sapdevice->evalgravKernel.get_workGroupMaxSize()/ni, 32);
+  
+//NOTE This does not work with double precision kernels, unless we 
+//specify the shared-memory INSIDE the kernel files
+  
+//  if(ni <= 256 && ni >= 32) 	
+//  	q = min(sapdevice->evalgravKernel.get_workGroupMaxSize()/ni, 32);
 
   //q = 1; //Use thsi when testing optimal thread/block/multi size
 
@@ -1359,9 +1366,9 @@ double sapporo::evaluate_gravity(int ni, int nj)
   //int nj_scaled       = n_norm(nj, q*(4));
 //  int thisBlockScaled = nj_scaled/((4)*q);
   //Double precision! 4th
-  //shared_mem_size = p*q*(sizeof(double4) + sizeof(double4) + sizeof(int)*2 + sizeof(double));
+  shared_mem_size = p*q*(sizeof(double4) + sizeof(double4) + sizeof(int)*2 + sizeof(double));
   //Sixth order
-//   shared_mem_size = p*q*(sizeof(double4) + sizeof(double4) + sizeof(double4) + sizeof(int)*2 + sizeof(double));
+  shared_mem_size = p*q*(sizeof(double4) + sizeof(double4) + sizeof(double4) + sizeof(int)*2 + sizeof(double));
 
 //   fprintf(stderr, "Shared mem size: %d  ds4: %d f4: %d p: %d q: %d\n", shared_mem_size, sizeof(DS4), sizeof(float4), p,q);
 //   exit(0);
@@ -1389,20 +1396,21 @@ double sapporo::evaluate_gravity(int ni, int nj)
 
   if(integrationOrder > GRAPE5)
   {
-    sapdevice->evalgravKernel.set_arg<void*>(7, sapdevice->pVel_j.ptr());
-    sapdevice->evalgravKernel.set_arg<void*>(8, sapdevice->id_j.ptr());
-    sapdevice->evalgravKernel.set_arg<void*>(9, sapdevice->vel_i.ptr());
+    sapdevice->evalgravKernel.set_arg<void*>(7,  sapdevice->pVel_j.ptr());
+    sapdevice->evalgravKernel.set_arg<void*>(8,  sapdevice->id_j.ptr());
+    sapdevice->evalgravKernel.set_arg<void*>(9,  sapdevice->vel_i.ptr());
     sapdevice->evalgravKernel.set_arg<void*>(10, sapdevice->jrk_i.ptr());
     sapdevice->evalgravKernel.set_arg<void*>(11, sapdevice->id_i.ptr());
     sapdevice->evalgravKernel.set_arg<void*>(12, sapdevice->ngb_list_i.ptr());
-    sapdevice->evalgravKernel.set_arg<int>(13, NULL, (shared_mem_size)/sizeof(int));  //Shared memory
+    if(integrationOrder == FOURTH)
+      sapdevice->evalgravKernel.set_arg<int>(13, NULL, (shared_mem_size)/sizeof(int));  //Shared memory
   }
 
   if(integrationOrder > FOURTH)
   {
     sapdevice->evalgravKernel.set_arg<void*>(13, sapdevice->pAcc_j.ptr());
     sapdevice->evalgravKernel.set_arg<void*>(14, sapdevice->snp_i.ptr());
-    //sapdevice->evalgravKernel.set_arg<int>(15, NULL, (shared_mem_size)/sizeof(int));  //Shared memory
+    sapdevice->evalgravKernel.set_arg<int>(15, NULL, (shared_mem_size)/sizeof(int));  //Shared memory
   }
 
 //   sapdevice->evalgravKernel.setWork(p, NBLOCKS, q, 1);  //dim3 threads(p, q, 1); dim3 grid(NBLOCKS, 1, 1);
@@ -1447,13 +1455,13 @@ double sapporo::evaluate_gravity(int ni, int nj)
 
 #endif
 
-
+fprintf(stderr, "Going for 6th order \n");
   //Kernel reduce
   nthreads        = (sapdevice->get_NBLOCKS());
   int nblocks     = ni;
   shared_mem_size = (sapdevice->get_NBLOCKS())*(2*sizeof(float4) + 3*sizeof(int)); //4th DS
   shared_mem_size = sapdevice->get_NBLOCKS()*(2*sizeof(double4) + 2*sizeof(int) + sizeof(double));   //4th DP
-//   shared_mem_size = NBLOCKS*(3*sizeof(double4) + 2*sizeof(int) + sizeof(double));   //6th order
+  shared_mem_size = sapdevice->get_NBLOCKS()*(3*sizeof(double4) + 2*sizeof(int) + sizeof(double));   //6th order
 
   sapdevice->reduceForces.setWork_threadblock2D(nthreads, 1, nblocks, 1);
 
@@ -1470,12 +1478,14 @@ double sapporo::evaluate_gravity(int ni, int nj)
     sapdevice->reduceForces.set_arg<int  >(4, &tempNTHREADS);  //offset_ds
     sapdevice->reduceForces.set_arg<int  >(5, &tempNGBOffset);  //offset
     sapdevice->reduceForces.set_arg<void*>(6, sapdevice->ngb_list_i.ptr());
-    sapdevice->reduceForces.set_arg<int>(7, NULL, (shared_mem_size)/sizeof(int));  //Shared memory
+    if(integrationOrder == FOURTH)
+      sapdevice->reduceForces.set_arg<int>(7, NULL, (shared_mem_size)/sizeof(int));  //Shared memory
   }
 
   if(integrationOrder > FOURTH)
   {
     sapdevice->reduceForces.set_arg<void*>(7, sapdevice->snp_i.ptr());
+    sapdevice->reduceForces.set_arg<int>(8, NULL, (shared_mem_size)/sizeof(int));  //Shared memory
   }
 
 //   sapdevice->reduceForces.printWorkSize();

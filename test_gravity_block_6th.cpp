@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
     vel[i][0] = drand48();
     vel[i][1] = drand48();
     vel[i][2] = drand48();
-    
+/*    
     snp[i][0] = drand48();
     snp[i][1] = drand48();
     snp[i][2] = drand48();
@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
     crk[i][0] = drand48();
     crk[i][1] = drand48();
     crk[i][2] = drand48();    
- 
+ */
     h2[i] = 1.0 * pow(12.0/n, 1.0/3);
     h2[i] = h2[i]*h2[i];
 
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
   int cluster_id;
 //   int sapporo::open(std::string kernelFile, int *devices, int nprocs = 1, int order = FOURTH)
 //   grav.open("CUDA/kernels4th.ptx", cluster_id, 1, 1);
-  int devices[] = {1,0,2,3};
+  int devices[] = {0,1,2,3};
   grav.open("CUDA/kernels6thDP.ptx",devices , 1, 2);
   
   int ipmax = grav.get_n_pipes();
@@ -98,12 +98,13 @@ int main(int argc, char *argv[]) {
 			eps2, h2,
 			acc+i, jrk+i,snp+i, crk+i, pot+i, nnb+i, NULL, true);
                         
-//     for(int j=0; j < ipmax; j++){
-//     printf("calchalf2: %d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\n", j,
-//            acc[j][0], acc[j][1], acc[j][2],
-//            pot[j], jrk[j][0],
-//            jrk[j][1], jrk[j][2], nnb[j]);
-//     }
+    for(int j=0; j < ipmax; j++){
+    printf("calchalf2: %d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\n", j,
+           acc[j][0], acc[j][1], acc[j][2],
+           pot[j], jrk[j][0],
+           jrk[j][1], jrk[j][2], nnb[j]);
+    }
+    exit(0);
 
 //       grav.read_ngb_list(cluster_id);
 //       for (int i1 = i; i1 < i + npart; i1++) {
