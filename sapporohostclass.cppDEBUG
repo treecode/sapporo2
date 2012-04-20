@@ -1,0 +1,1251 @@
+#include "sapporohostclass.h"
+
+#include <sys/time.h>
+#include <algorithm>
+
+// #define DEBUG_PRINT
+#define OLDMETHOD
+
+inline int n_norm(int n, int j) {
+  n = ((n-1)/j) * j + j;
+  if (n == 0) n = j;
+  return n;
+}
+
+
+double get_time() {
+  struct timeval Tvalue;
+  struct timezone dummy;
+  
+  gettimeofday(&Tvalue,&dummy);
+  return ((double) Tvalue.tv_sec +
+          1.e-6*((double) Tvalue.tv_usec));
+}
+
+//Have to make this a static pointer in order to be able to
+//use it in combination with the threadprivate directive
+static sapporo2::device   *sapdevice;
+#pragma omp threadprivate(sapdevice)
+
+
+#define NGB_PB 256
+
+/*
+
+Application library interface
+
+*/
+void sapporo::cleanUpDevice()
+{ 
+  #pragma omp parallel
+  {
+    if(sapdevice != NULL)
+    {
+        cerr << "Clean up2 \n";
+      delete sapdevice;
+      sapdevice = NULL;
+        cerr << "Clean up3 \n";
+    }
+  } 
+  
+}
+
+int prevNJ = 0;
+static int testCount =0;
+static int callCount = 0;
+
+int stopPoint = 0;
+
+ FILE *fd2;
+
+int sapporo::open(int cluster_id)
+{
+  dev::context        contextTest;  //Only used to retrieve the number of devices  
+  int numDev = 0;
+
+  #ifdef __OPENCL_DEV__
+    const int numPlatform = contextTest.getPlatformInfo();
+    numDev = contextTest.getDeviceCount(CL_DEVICE_TYPE_GPU, 0);
+  #else
+    numDev = contextTest.getDeviceCount();
+  #endif
+  
+  cout << "Number of cpus: " << omp_get_num_procs() << endl;
+  cout << "Number of gpus: " << numDev << endl;
+
+  // create as many CPU threads as there are CUDA devices  
+  // and create the contexts
+//   omp_set_num_threads(numDev);
+//   omp_set_num_threads(3);
+
+
+int numThread = 1;
+
+fd2 = fopen("test2.log", "wa");
+
+FILE* fd;
+
+
+if ((fd = fopen("test", "r"))) {    
+  numThread = 2;
+}
+
+if ((fd = fopen("test2", "r"))) {    
+  fscanf(fd, "%d", &stopPoint);
+}
+
+
+  omp_set_num_threads(numThread); 
+  #pragma omp parallel
+  {
+    //Create context for each thread
+    unsigned int tid      = omp_get_thread_num();
+    sapdevice = new sapporo2::device();
+    
+    //Assign the device and load the kernels
+//     sapdevice->assignDevice(tid % numDev);
+     sapdevice->assignDevice(0);  
+    
+    sapdevice->loadComputeKernels();    
+    
+    if(omp_get_thread_num() == 0)
+    {
+      nCUDAdevices = omp_get_num_threads(); 
+    }
+  } 
+  
+
+  //Used to store direct pointers to the memory of various threads
+  //that handle the device communication
+  jMemAddresses.resize(nCUDAdevices);
+   
+  return 0;  
+}
+
+int sapporo::close(int cluster_id) {
+  
+  cerr << "g6_close\n";
+  isFirstSend = true;
+  #pragma omp parallel 
+  {
+    //TODO call the free memory function
+    delete sapdevice;
+    sapdevice = NULL;
+  }
+  return 0;
+}
+
+//Set integrator prediction time-step
+int sapporo::set_ti(int cluster_id, double ti) {  
+ #ifdef DEBUG_PRINT
+  cerr << "set_ti: " << ti << endl;
+ #endif  
+  
+  t_i     = ti;
+  predict = true;
+ 
+  return 0;
+}
+
+int sapporo::get_n_pipes() {
+  return n_pipes;
+}
+
+
+int sapporo::set_j_particle(int   cluster_id,
+                           int    address,
+                           int    id,
+                           double tj, double dtj,
+                           double mass,
+                           double k18[3], double j6[3],
+                           double a2[3], double v[3], double x[3]) {  
+  
+  #ifdef DEBUG_PRINT
+    cerr << "set_j_particle\n";
+  #endif  
+   
+  
+  nj_updated = true;  //There are particles that are updated
+  
+  if(isFirstSend)
+  {
+    address_j.push_back(address);
+    t_j.push_back((double2){tj, dtj});
+
+    //Store particles
+    pos_j.push_back( (double4){x[0], x[1], x[2], mass} );
+    vel_j.push_back( (double4){v[0],    v[1],    v[2],    0.0} );
+    acc_j.push_back( (double4){a2[0]*2, a2[1]*2, a2[2]*2, 0.0} );
+    jrk_j.push_back( (double4){j6[0]*6, j6[1]*6, j6[2]*6, 0.0} );
+    id_j.push_back ( id); 
+
+    nj_modified = address_j.size();
+  }
+  else
+  {
+    //TODO a check on address ? 28/9 yes this should be done by checking nj_max, that is 
+    //initialised to a big value at start program and set after first calc_firsthalf call      
+    //TODO instead of stopping, change the program so it reallocates memory
+    if (address > nj_max) {
+      fprintf(stderr, "Fatal! address= %d > nj_max= %d. I am giving up.\n",
+              address, nj_max);
+      exit(-1);
+    }      
+    
+    
+    //Not the first time that we send particles, so we have to store
+    //them in the precalculated locations
+    //First calculate on which device this particle has to be stored
+    //and on which physical address on that device
+    int dev           = address % nCUDAdevices;
+    int devAddr       = address / nCUDAdevices;
+    int storeLoc      = jMemAddresses[dev].count;
+    
+    //Old method
+    #ifdef OLDMETHOD
+    dev           = address / (nj_total / nCUDAdevices);
+    devAddr       = address - (nj_total / nCUDAdevices)*dev;
+    storeLoc      = jMemAddresses[dev].count;
+    #endif
+    
+    jMemAddresses[dev].address[storeLoc]      = devAddr;
+    jMemAddresses[dev].t_j[storeLoc]          = (double2){tj, dtj};
+    jMemAddresses[dev].pos_j[storeLoc]        = (double4){x[0], x[1], x[2], mass};
+    jMemAddresses[dev].vel_j[storeLoc]        = (double4){v[0],    v[1],    v[2],    0.0};
+    jMemAddresses[dev].acc_j[storeLoc]        = (double4){a2[0]*2, a2[1]*2, a2[2]*2, 0.0};
+    jMemAddresses[dev].jrk_j[storeLoc]        = (double4){j6[0]*6, j6[1]*6, j6[2]*6, 0.0};
+    jMemAddresses[dev].id_j[storeLoc]         = id;
+    jMemAddresses[dev].count++;   
+  }
+
+  #ifdef DEBUG_PRINT
+    fprintf(stderr, "Setj %d\t%d\t%f\t%f\t%f\t%f\t%f\t%f\n", address, id, x[0],x[1],x[2],v[0],v[1],v[2]);
+  #endif  
+  
+    if(callCount >= 5230)
+  {
+    
+    fprintf(stderr, "%d Setj %d\t%d\t%f\t%f\t%f\t%f\t%f\t%f\n", callCount, address, id, x[0],x[1],x[2],v[0],v[1],v[2]);
+    fprintf(stderr, "\t\t\t%f\t%f\t%f\t%f\t%f\t%f\n"       , a2[0],a2[1],a2[2],j6[0],j6[1],j6[2]);
+  }
+  
+   
+  return 0;
+};
+
+void sapporo::initialize_firstsend()
+{ 
+  #ifdef DEBUG_PRINT
+    cerr << "initialize_firstsend\n";
+  #endif  
+  
+  nj_total = nj_modified;
+        
+  nj_max   = nj_total; //TODO change
+
+  #pragma omp parallel
+  {
+    
+    //Number of particles on this device:
+    int nj_local = nj_modified / nCUDAdevices;
+  
+    if(omp_get_thread_num() < (nj_modified  % nCUDAdevices))
+      nj_local++;    
+    
+    sapdevice->nj_local = nj_local;
+    sapdevice->allocateMemory(nj_local, get_n_pipes());      
+    
+  
+    //Store the memory pointers for direct indexing
+    memPointerJstruct tempStruct;
+    tempStruct.address = &sapdevice->address_j[0];
+    tempStruct.t_j     = &sapdevice->t_j_temp[0];
+    tempStruct.pos_j   = &sapdevice->pos_j_temp[0];
+    tempStruct.vel_j   = &sapdevice->vel_j_temp[0];
+    tempStruct.acc_j   = &sapdevice->acc_j_temp[0];
+    tempStruct.jrk_j   = &sapdevice->jrk_j_temp[0];
+    tempStruct.id_j    = &sapdevice->id_j_temp[0];
+    tempStruct.count   = 0;   //Number of particles currently stored
+    tempStruct.toCopy  = 0;   //Number of particles to be copied on the device it self
+    jMemAddresses[omp_get_thread_num()] = tempStruct;
+  } //end parallel section   
+  
+  //Set & send the initial particles
+  //We copy from the main thread the particles into the memory
+  //of the client threads. This is NOT done in parallel.
+  for(int i=0 ; i < nj_total; i++)
+  {      
+    int addr          = address_j[i];
+    int dev           = addr % nCUDAdevices;
+    int devAddr       = addr / nCUDAdevices;
+    
+    //Old method
+    #ifdef OLDMETHOD
+      addr          = address_j[i];
+      dev           = addr / (nj_total / nCUDAdevices);
+      devAddr       = addr - (nj_total / nCUDAdevices)*dev;
+    #endif
+          
+    //cerr << i << "\t" << addr << "\t" << dev << "\t" << devAddr << "\t" << storeLoc << endl;  
+    
+    //Set the j-particles on the correct memory location
+    int storeLoc                              = jMemAddresses[dev].count;
+    jMemAddresses[dev].address[storeLoc]      = devAddr;
+    jMemAddresses[dev].t_j[storeLoc]          = t_j[i];
+    jMemAddresses[dev].pos_j[storeLoc]        = pos_j[i];
+    jMemAddresses[dev].vel_j[storeLoc]        = vel_j[i];
+    jMemAddresses[dev].acc_j[storeLoc]        = acc_j[i];
+    jMemAddresses[dev].jrk_j[storeLoc]        = jrk_j[i];
+    jMemAddresses[dev].id_j[storeLoc]         = id_j[i];
+    jMemAddresses[dev].count++;
+  }
+  
+  #pragma omp parallel
+  {
+    //Now send the number of particles (in parallel)
+    int devCount = jMemAddresses[omp_get_thread_num()].count;
+    send_j_particles_to_device(devCount);
+  }     
+  
+  //Clear the data since we've already sent this data
+  address_j.clear();
+  t_j.clear();
+  pos_j.clear();
+  vel_j.clear();
+  acc_j.clear();
+  jrk_j.clear();
+  id_j.clear();
+  
+  isFirstSend = false;
+  nj_updated  = false;  
+}
+
+
+void sapporo::calc_firsthalf(int cluster_id,
+                            int nj, int ni,
+                            int id[], 
+                            double xi[][3], double vi[][3],
+                            double aold[][3], double j6old[][3],
+                            double phiold[3], 
+                            double eps2, double h2[]) {
+  
+  #ifdef DEBUG_PRINT
+    cerr << "calc_firsthalf ni: " << ni << "\tnj: " << nj << "\tnj_total: " << nj_total << endl;
+  #endif 
+  
+  //If this is the first send, then we have to allocate memory
+  //distribute the particles etc.
+  if(isFirstSend)
+  {
+    initialize_firstsend();
+  }
+
+  //Copy i-particles to device structures
+  for (int i = 0; i < ni; i++) {
+    id_i[i]  = id[i];    
+    pos_i[i] = (double4){ xi[i][0], xi[i][1], xi[i][2], h2[i]};
+    vel_i[i] = (double4){ vi[i][0], vi[i][1], vi[i][2], eps2};
+    EPS2     = eps2;
+    
+    #ifdef DEBUG_PRINT
+      fprintf(stderr, "Inpdevice= %d,\ti: %d\tindex: %d\t%f\t%f\t%f\t%f\t%f\t%f\n", 
+              -1,i,id[i], xi[i][0],xi[i][1],xi[i][2],vi[i][0],vi[i][1] ,vi[i][2]);
+    #endif
+  }
+  
+
+//   if(prevNJ == 2048 && nj == 2047)
+//     testCount++;
+  
+  prevNJ = nj;
+  
+ 
+  
+  
+//   cerr << "testCount: " << testCount <<endl;
+  
+  #pragma omp parallel
+  {
+    if (nj_updated) {    
+      //Get the number of particles set for this device
+      int devCount = jMemAddresses[omp_get_thread_num()].count;
+      if(devCount > 0)
+      {
+        send_j_particles_to_device(devCount);
+      }
+    }
+   
+    //ni is the number of particles in the pipes
+    send_i_particles_to_device(ni);
+    
+    //nj is the total number of particles to which the i particles have to 
+    //be calculated. For direct n-body this is usually equal to the total
+    //number of nj particles that have been set by the 
+    //calling code
+
+    if(nj != nj_total)
+    {
+      //The calling code does not want to use all particles, so we have to do some smart
+      //index calculations , to get the number of nj per device correct
+//       cerr << "nj: " << nj << "\tnj_total: " << nj_total << endl;
+//       cerr << "TODO! " << __FILE__ << "\t" << __LINE__ << endl; 
+
+
+    }
+    
+    //Calculate the number of nj particles that are used per device    
+    int thisDevNj;    
+    int temp = nj / nCUDAdevices;
+    if(omp_get_thread_num() < (nj  % nCUDAdevices))     
+      temp++;
+    
+    thisDevNj = temp;
+    sapdevice->nj_local = temp;
+
+    evaluate_gravity(ni, thisDevNj);   
+    
+    sapdevice->dev_ni = ni;
+  }//end parallel section
+  
+  //TODO sync?
+  nj_modified   = -1;
+  predict       = false;
+  nj_updated    = false; 
+  
+  //Clear the modified particles
+  if(address_j.size() > 0) {
+    address_j.clear();
+    t_j.clear();
+    pos_j.clear();
+    vel_j.clear();
+    acc_j.clear();
+    jrk_j.clear();
+    id_j.clear();
+  }
+  
+} //end calc_first
+
+
+int sapporo::calc_lasthalf(int cluster_id,
+                          int nj, int ni,
+                          int index[], 
+                          double xi[][3], double vi[][3],
+                          double eps2, double h2[],
+                          double acc[][3], double jerk[][3], double pot[]) {
+  
+ #ifdef DEBUG_PRINT
+  fprintf(stderr, "calc_lasthalf device= %d, ni= %d nj = %d  callCount: %d\n", -1, ni, nj, callCount++);
+ #endif
+ 
+  for (int i = 0; i < ni; i++) {
+    pot[i] = 0;
+    acc[i][0] =  acc[i][1] =  acc[i][2] = 0;
+    jerk[i][0] = jerk[i][1] = jerk[i][2] = 0;
+  }
+  
+  #pragma omp parallel
+  {
+    //Retrieve data from the devices (in parallel)
+    retrieve_i_particle_results(ni);
+  }
+  
+  //Now reduce the data from the different devices into the main thread
+  for (int dev = 0; dev < nCUDAdevices; dev++) {   
+    for (int i = 0; i < ni; i++) {
+      double4 acci = acc_i[i + dev*n_pipes];
+      double4 jrki = jrk_i[i + dev*n_pipes];
+      pot[i]      += acci.w;
+      
+      acc[i][0]   += acci.x;
+      acc[i][1]   += acci.y;
+      acc[i][2]   += acci.z;
+      
+      jerk[i][0]  += jrki.x;
+      jerk[i][1]  += jrki.y;
+      jerk[i][2]  += jrki.z;      
+    }
+  }
+   return 0;
+};
+
+
+int sapporo::calc_lasthalf2(int cluster_id,
+                           int nj, int ni,
+                           int index[], 
+                           double xi[][3], double vi[][3],
+                           double eps2, double h2[],
+                           double acc[][3], double jerk[][3], double pot[],
+                           int nnbindex[]) {
+  
+  #ifdef DEBUG_PRINT 
+    fprintf(stderr, "calc_lasthalf2 device= %d, ni= %d nj = %d callCount: %d\n", -1, ni, nj, callCount++);
+  #endif
+    fprintf(stderr, "calc_lasthalf2 device= %d, ni= %d nj = %d callCount: %d\n", -1, ni, nj, callCount++);
+  
+  bool doexit = false;
+  
+    for (int i = 0; i < ni; i++) {
+      if(nj == 2047)
+      {
+        if(index[i] == 1538)
+           doexit = true;
+      }
+    }
+     if(doexit)
+    {
+      for (int i = 0; i < ni; i++) {
+        fprintf(stderr,"dev: %d\t%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n", 29,    
+                        index[i], xi[i][0], xi[i][1], xi[i][2], vi[i][0], vi[i][1], vi[i][2], h2[i]);
+        fprintf(stderr,"\t\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n",     
+                        pot[i], acc[i][0], acc[i][1], acc[i][2], jerk[i][0], jerk[i][1], jerk[i][2]);
+      }
+    }
+    
+
+  double ds_min[NTHREADS];
+  for (int i = 0; i < ni; i++) {    
+    pot[i] = 0;
+    acc[i][0]  = acc[i][1]  = acc[i][2]  = 0;
+    jerk[i][0] = jerk[i][1] = jerk[i][2] = 0;
+    nnbindex[i] = 0;
+    ds_min[i] = 1.0e10;
+  }
+  
+  #pragma omp parallel
+  {
+    //Retrieve data from the devices (in parallel)
+    retrieve_i_particle_results(ni);
+  }
+   
+  doexit = false;
+  //Reduce the data from the different devices into one final results
+  for (int dev = 0; dev < nCUDAdevices; dev++) {
+    for (int i = 0; i < ni; i++) {
+      double4 acci = acc_i[i + dev*n_pipes];
+      double4 jrki = jrk_i[i + dev*n_pipes];
+      
+      double  ds   = ds_i[i  + dev*n_pipes];
+
+      //fprintf(stdout, "device= %d, ni= %d pot = %g\n", dev, i, acci.x);
+      //fprintf(stderr, "Outdevice= %d,\t%d\t%f\t%f\t%f\n", dev,i, acci.x, acci.y, acci.z);
+      pot[i]    += acci.w;
+      
+      acc[i][0] += acci.x;
+      acc[i][1] += acci.y;
+      acc[i][2] += acci.z;
+      
+      jerk[i][0] += jrki.x;
+      jerk[i][1] += jrki.y;
+      jerk[i][2] += jrki.z;
+
+      if (ds < ds_min[i]) {
+        int nnb     = (int)(jrki.w);
+        nnbindex[i] = nnb; 
+        ds_min[i]   = ds;
+      } 
+      
+//       fprintf(stderr,"%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\t%f\n",
+//               index[i], pot[i], acc[i][0], acc[i][1], acc[i][2], jerk[i][0], jerk[i][1], jerk[i][2],
+//               nnbindex[i], ds_min[i]);
+//       
+      if(nj == 2047)
+      {
+//       fprintf(stderr,"dev: %d\t%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\t%f\n", dev,
+//               index[i], pot[i], acc[i][0], acc[i][1], acc[i][2], jerk[i][0], jerk[i][1], jerk[i][2],
+//               nnbindex[i], ds_min[i]);
+      fprintf(stderr,"%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n",
+              index[i], acci.w, acci.x, acci.y, acci.z, jrki.x, jrki.y, jrki.z,
+              jrki.w, ds);
+      }
+      
+//       if(index[i] == 1538)
+//       {
+//         fprintf(stderr,"%d\t%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n", 8,
+//                 index[i], acci.w, acci.x, acci.y, acci.z, jrki.x, jrki.y, jrki.z,
+//                 jrki.w, ds);
+//       }
+      
+      
+    }
+  }
+  
+//     for (int i = 0; i < ni; i++) {
+//             if(index[i] == 1200)
+//             {
+//            fprintf(stderr,"dev: %d\t%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\t%f\n", 9,
+//                index[i], pot[i], acc[i][0], acc[i][1], acc[i][2], jerk[i][0], jerk[i][1], jerk[i][2],
+//                nnbindex[i], ds_min[i]);
+//             }
+//     }
+
+//   exit(0);
+  if(callCount >= 5238)
+  {
+    for (int i = 0; i < ni; i++) {
+           fprintf(stderr,"%d dev: %d\t%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\t%f\n", callCount, 9,
+               index[i], pot[i], acc[i][0], acc[i][1], acc[i][2], jerk[i][0], jerk[i][1], jerk[i][2],
+               nnbindex[i], ds_min[i]);
+               
+               if(index[i] == 1538)
+                 doexit = true;
+    }      
+  }
+  
+ 
+  if(fd2){
+    for(int i=0 ; i < ni; i++){
+               fprintf(fd2,"%d dev: %d\t%d\t%4.12lg\t%4.12lg\t%4.12lg\t%4.12lg\t%4.12lg\t%4.12lg\t%4.12lg\t%d\t%4.12lg\n", callCount, 9,
+               index[i], pot[i], acc[i][0], acc[i][1], acc[i][2], jerk[i][0], jerk[i][1], jerk[i][2],
+               nnbindex[i], ds_min[i]);
+    }
+    
+  }
+  else
+  {
+    cerr << " OPEN FAILED !? \n";
+  }
+  
+  
+/*  
+  if(callCount == 34760)
+  {
+    exit(0);
+  }*/
+  
+   //29800 done
+   //29815 done
+   //16 2 diffs
+   //17 2 diffs
+   //29820 3 diffs
+   //29825 1 diff
+   //29850 1 diff
+   //29900 diffs
+  if(callCount == stopPoint)
+  {
+    //DUMP input data
+    FILE* fd;
+    if ((fd = fopen("test.log", "w"))) {    
+      
+    #pragma omp parallel
+      {        
+        if(omp_get_thread_num() == 0)
+        {
+            sapdevice->id_j.d2h();
+            sapdevice->pos_j.d2h();
+            sapdevice->vel_j.d2h();
+            sapdevice->pPos_j.d2h();
+            sapdevice->pVel_j.d2h();
+            for(int i=0; i < sapdevice->nj_local; i++)
+            {
+              fprintf(fd,"%d\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\n",
+              sapdevice->id_j[i], sapdevice->pPos_j[i].w, sapdevice->pPos_j[i].x, sapdevice->pPos_j[i].y, sapdevice->pPos_j[i].z,
+                      sapdevice->pVel_j[i].x, sapdevice->pVel_j[i].y, sapdevice->pVel_j[i].z,sapdevice->pVel_j[i].w,
+                      sapdevice->pos_j[i].x, sapdevice->pos_j[i].y, sapdevice->pos_j[i].z,
+                      sapdevice->vel_j[i].x, sapdevice->vel_j[i].y, sapdevice->vel_j[i].z);              
+            }
+        }    
+      }
+      #pragma omp parallel
+      {
+        if(omp_get_thread_num() == 1)
+        {
+            sapdevice->id_j.d2h();
+            sapdevice->pos_j.d2h();
+            sapdevice->vel_j.d2h();
+            sapdevice->pPos_j.d2h();
+            sapdevice->pVel_j.d2h();
+            for(int i=0; i < sapdevice->nj_local; i++)
+            {
+              fprintf(fd,"%d\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\t%4.10lg\n",
+              sapdevice->id_j[i], sapdevice->pPos_j[i].w, sapdevice->pPos_j[i].x, sapdevice->pPos_j[i].y, sapdevice->pPos_j[i].z,
+                      sapdevice->pVel_j[i].x, sapdevice->pVel_j[i].y, sapdevice->pVel_j[i].z,sapdevice->pVel_j[i].w,
+                      sapdevice->pos_j[i].x, sapdevice->pos_j[i].y, sapdevice->pos_j[i].z,
+                      sapdevice->vel_j[i].x, sapdevice->vel_j[i].y, sapdevice->vel_j[i].z);              
+            }
+        }    
+      }    
+          
+
+    }
+    
+    fclose(fd);   
+    
+    exit(0);
+  }
+        /*
+  #pragma omp parallel
+  {
+    
+    if(omp_get_thread_num() == 0)
+    {
+        sapdevice->id_j.d2h();
+        sapdevice->pPos_j.d2h();
+        for(int i=0; i < 1024; i++)
+        {
+           fprintf(stderr,"Dev: %d , id: %d posx: %f \n", 0, sapdevice->id_j[i], sapdevice->pPos_j[i].x);
+        }
+    }    
+  }
+  #pragma omp parallel
+  {
+    if(omp_get_thread_num() == 1)
+    {
+        sapdevice->id_j.d2h();
+        sapdevice->pPos_j.d2h();
+        for(int i=0; i < 1024; i++)
+        {
+           fprintf(stderr,"Dev: %d , id: %d posx: %f \n", 1, sapdevice->id_j[i], sapdevice->pPos_j[i].x);
+        }
+    }      
+  }
+    
+    exit(0);
+  }*/
+  
+  return 0;
+};
+
+int sapporo::read_ngb_list(int cluster_id)
+{
+  
+ #ifdef DEBUG_PRINT
+  fprintf(stderr, "read_ngb_list\n");
+ #endif
+   
+  cerr << "testCount: " << testCount <<endl;   
+  testCount++;
+   
+  bool overflow = false;
+  int ni[MAXCUDADEVICES];
+  
+  #pragma omp parallel
+  {
+    //Retrieve data from the devices
+    ni[omp_get_thread_num()] = fetch_ngb_list_from_device();
+  }
+  
+   for(int dev = 0; dev < nCUDAdevices; dev++)
+   {      
+    for (int j = 0; j < ni[dev]; j++)
+    {         
+      if (ngb_list_i[dev*NGB_PP*n_pipes + j*NGB_PP] >= NGB_PP) {          
+        overflow = true;
+      }
+    }
+  }
+  
+  
+  
+ if(testCount == 179)
+  {
+    cerr << "Dump at : " << testCount << endl;
+    //DUMP input data
+    FILE* fd;
+    if ((fd = fopen("test.log", "w"))) {    
+      
+    #pragma omp parallel
+      {        
+        if(omp_get_thread_num() == 0)
+        {
+            sapdevice->id_j.d2h();
+            sapdevice->pPos_j.d2h();
+            sapdevice->pVel_j.d2h();
+            for(int i=0; i < sapdevice->nj_local; i++)
+            {
+              fprintf(fd,"%d\t%lg\t%lg\t%lg\t%lg\t%lg\t%lg\t%lg\t%lg\n",
+              sapdevice->id_j[i], sapdevice->pPos_j[i].w, sapdevice->pPos_j[i].x, sapdevice->pPos_j[i].y, sapdevice->pPos_j[i].z,
+                      sapdevice->pVel_j[i].x, sapdevice->pVel_j[i].y, sapdevice->pVel_j[i].z,sapdevice->pVel_j[i].w);              
+            }
+        }    
+      }
+      #pragma omp parallel
+      {
+        if(omp_get_thread_num() == 1)
+        {
+            sapdevice->id_j.d2h();
+            sapdevice->pPos_j.d2h();
+            sapdevice->pVel_j.d2h();
+            for(int i=0; i < sapdevice->nj_local; i++)
+            {
+              fprintf(fd,"%d\t%lg\t%lg\t%lg\t%lg\t%lg\t%lg\t%lg\t%lg\n",
+              sapdevice->id_j[i], sapdevice->pPos_j[i].w, sapdevice->pPos_j[i].x, sapdevice->pPos_j[i].y, sapdevice->pPos_j[i].z,
+                      sapdevice->pVel_j[i].x, sapdevice->pVel_j[i].y, sapdevice->pVel_j[i].z,sapdevice->pVel_j[i].w);              
+            }
+        }      
+      }      
+       #pragma omp barrier   
+
+    }
+    
+    fclose(fd);   
+    
+    exit(0);
+  }      
+    
+  
+  
+  
+  
+    
+  return overflow;
+} //end read_ngb_list
+
+int sapporo::get_ngb_list(int cluster_id,
+                         int ipipe,
+                         int maxlength,
+                         int &nblen,
+                         int nbl[]) {
+ 
+//   if (ipipe >= devs[0].ni) {
+//     fprintf(stderr, "Fatal! ipipe= %d >= dev.ni= %d. I give up.\n",
+//             ipipe, devs[0].ni);
+//     exit(-1);
+//   }
+ #ifdef DEBUG_PRINT
+  fprintf(stderr, "get_ngb_list\n");
+ #endif
+
+// 
+  bool overflow = false;
+  nblen         = 0;
+  for (int i = 0; i < nCUDAdevices; i++) {
+    int offset  = i*NGB_PP*n_pipes + NGB_PP*ipipe;
+    int len     = ngb_list_i[offset];
+    memcpy(nbl+nblen, &ngb_list_i[offset+1], sizeof(int)*min(len, maxlength - len));
+    nblen += len;
+    if (nblen >= maxlength) {
+      overflow = true;
+      break;
+    }
+  }
+  sort(nbl, nbl + min(nblen, maxlength));
+  
+
+//   if (overflow) {
+//     fprintf(stderr, "sapporo::get_ngb_list(..) - overflow for ipipe= %d, ngb= %d\n", 
+//          ipipe, nblen);
+//   }
+  
+  return overflow;
+}
+
+/*
+
+Device communication functions
+
+*/
+
+
+void sapporo::send_j_particles_to_device(int nj_tosend)
+{
+  #ifdef DEBUG_PRINT
+    cerr << "send_j_particles_to_device nj_tosend: " << nj_tosend << "\tnj_local: "<< sapdevice->nj_local << endl;
+  #endif 
+  
+//   if(nj_tosend == 8194)
+//   {
+//    for(int i=0; i < 8194; i++)
+//    {
+//      cerr << "TESTJ " << i << "\t" << sapdevice->address_j[i] << endl;
+//    }
+//     
+//   }
+  
+  //This function is called inside an omp parallel section
+  
+  //Copy the particles to the device memory
+  //Copy :-) 
+//   cerr << nj_tosend << "\t" << jMemAddresses[omp_get_thread_num()].count << endl;
+  assert(nj_tosend == jMemAddresses[omp_get_thread_num()].count);
+  sapdevice->address_j.h2d(nj_tosend);
+  sapdevice->t_j_temp.h2d(nj_tosend);
+  sapdevice->pos_j_temp.h2d(nj_tosend);
+  sapdevice->vel_j_temp.h2d(nj_tosend);
+  sapdevice->acc_j_temp.h2d(nj_tosend);
+  sapdevice->jrk_j_temp.h2d(nj_tosend);    
+  sapdevice->id_j_temp.h2d(nj_tosend);
+  
+  //Reset the number of particles
+  jMemAddresses[omp_get_thread_num()].toCopy += jMemAddresses[omp_get_thread_num()].count;
+  jMemAddresses[omp_get_thread_num()].count = 0;
+} //end send j particles
+
+
+void sapporo::send_i_particles_to_device(int ni)
+{
+  #ifdef DEBUG_PRINT
+    cerr << "send_i_particles_to_device ni: " << ni << endl;
+  #endif 
+  
+  //This is function is called inside an omp parallel section
+  
+  //First we copy the data into the device structures
+  //and then to the host...bit double TODO make it better!
+  memcpy(&sapdevice->pos_i[0], &pos_i[0], sizeof(double4) * ni);
+  memcpy(&sapdevice->vel_i[0], &vel_i[0], sizeof(double4) * ni);
+  memcpy(&sapdevice->id_i[0],  &id_i[0],  sizeof(int)     * ni);
+  sapdevice->pos_i.h2d(ni);
+  sapdevice->vel_i.h2d(ni);
+  sapdevice->id_i.h2d(ni);
+} //end i particles
+
+void sapporo::retrieve_i_particle_results(int ni)
+{
+  
+ #ifdef DEBUG_PRINT
+  cerr << "retrieve_i_particle_results\n";
+ #endif
+ 
+  //TODO make this better as with the other memory copies
+  sapdevice->jrk_i.d2h(ni);
+  sapdevice->acc_i.d2h(ni);
+  sapdevice->ds_i.d2h(ni);
+  
+  memcpy(&acc_i[n_pipes*omp_get_thread_num()], &sapdevice->acc_i[0], sizeof(double4) * ni);
+  memcpy(&jrk_i[n_pipes*omp_get_thread_num()], &sapdevice->jrk_i[0], sizeof(double4) * ni);
+  memcpy(&ds_i[n_pipes *omp_get_thread_num()], &sapdevice->ds_i[0],  sizeof(double)  * ni);  
+}
+
+int sapporo::fetch_ngb_list_from_device() {
+ 
+ #ifdef DEBUG_PRINT
+  cerr << "fetch_ngb_list_from_device\n";
+ #endif
+ 
+  #if 1
+//   TODO enable again :-)
+  int ni = sapdevice->dev_ni;
+  //Copy all data to the device
+//   sapdevice->ngb_list_i.d2h();
+  //Copy only the final selection
+  sapdevice->ngb_list_i.d2h(ni*NGB_PP, NTHREADS*NGB_PB*NBLOCKS);
+ 
+  //Now only copy a small part of it into the other memory
+//   memcpy(&ngb_list_i[n_pipes*NGB_PP*omp_get_thread_num()], &sapdevice->ngb_list_i[NTHREADS*NGB_PB*NBLOCKS], sizeof(int) * ni*NGB_PP);
+  memcpy(&ngb_list_i[n_pipes*NGB_PP*omp_get_thread_num()], &sapdevice->ngb_list_i[0], sizeof(int) * ni*NGB_PP);
+
+  return ni;
+  #endif
+//   return 0;
+}
+
+
+double sapporo::evaluate_gravity(int ni, int nj)
+{
+  #ifdef DEBUG_PRINT
+    cerr << "evaluate_gravity ni: " << ni << "\tnj: " << nj << endl;
+  #endif
+   
+  
+  //This function is called inside an omp parallel section
+  
+  //ni is the number of i-particles that is set and is to be integrated
+  //nj is the current number of j-particles that are used as sources
+ 
+  //If there are particles updated, put them in the correct locations
+  //in the device memory. From the temp buffers to the final location.
+  if(jMemAddresses[omp_get_thread_num()].toCopy > 0)
+  {
+    //Set arguments
+    int njToCopy = jMemAddresses[omp_get_thread_num()].toCopy;
+    jMemAddresses[omp_get_thread_num()].toCopy = 0;
+    
+    assert(njToCopy <= sapdevice->nj_local);
+    
+    sapdevice->copyJParticles.set_arg<int  >(0, &njToCopy);
+    sapdevice->copyJParticles.set_arg<int  >(1, &sapdevice->nj_local);
+    sapdevice->copyJParticles.set_arg<void*>(2, sapdevice->address_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(3, sapdevice->t_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(4, sapdevice->pPos_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(5, sapdevice->pVel_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(6, sapdevice->pos_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(7, sapdevice->vel_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(8, sapdevice->acc_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(9, sapdevice->jrk_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(10, sapdevice->id_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(11, sapdevice->t_j_temp.ptr());      
+    sapdevice->copyJParticles.set_arg<void*>(12, sapdevice->pos_j_temp.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(13, sapdevice->vel_j_temp.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(14, sapdevice->acc_j_temp.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(15, sapdevice->jrk_j_temp.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(16, sapdevice->id_j_temp.ptr());      
+    
+    //Set execution config and execute
+    sapdevice->copyJParticles.setWork_1D(128, njToCopy);   
+    sapdevice->copyJParticles.execute();      
+  }
+
+       
+  //if predict call predict Kernel 
+  if(predict)
+  {    
+    //Set arguments    
+    sapdevice->predictKernel.set_arg<int   >(0, &nj);
+    sapdevice->predictKernel.set_arg<double>(1, &t_i);
+    sapdevice->predictKernel.set_arg<void* >(2, sapdevice->t_j.ptr());
+    sapdevice->predictKernel.set_arg<void* >(3, sapdevice->pPos_j.ptr());
+    sapdevice->predictKernel.set_arg<void* >(4, sapdevice->pVel_j.ptr());
+    sapdevice->predictKernel.set_arg<void* >(5, sapdevice->pos_j.ptr());
+    sapdevice->predictKernel.set_arg<void* >(6, sapdevice->vel_j.ptr());
+    sapdevice->predictKernel.set_arg<void* >(7, sapdevice->acc_j.ptr());
+    sapdevice->predictKernel.set_arg<void* >(8, sapdevice->jrk_j.ptr());     
+    
+    //Set execution config and execute
+    sapdevice->predictKernel.setWork_1D(128, nj);   
+    sapdevice->predictKernel.execute();          
+  }
+
+  //Kernel gravity
+  
+  //Calculate the number of blocks, groups, etc
+  
+  //Dimensions of one thread-block
+  int p = ni;
+  int q = min(NTHREADS/ni, 32);
+  
+  //TODO make the shared mem size depending on which kernel we use  
+  int shared_mem_size = p*q*(sizeof(DS4) + sizeof(float4));
+  int nj_scaled       = n_norm(nj, q*NBLOCKS);
+  int thisBlockScaled = nj_scaled/(NBLOCKS*q);
+  int nthreads        = NTHREADS;
+  
+  //Double precision!
+  shared_mem_size = p*q*(sizeof(double4) + sizeof(double4) + sizeof(int)*2 + sizeof(double));    
+  
+//   cerr << "p: " << p << "\tq: " << q << "\tNTHREADS: " << NTHREADS << "\tni: ";
+//   cerr << ni << "\tnj: " << nj << "\tsharedmem: " << shared_mem_size << "\tsizeof(ds4)" << sizeof(DS4) << endl;
+
+  //The start and count are calculated in the kernel, required is the total 
+  //number of j particles, which is nj
+  
+  //Total number of blocks that is started is NBLOCKS, but total number of 
+  //parts is: q*NBLOCKS
+  //q*NBLOCKS
+  
+  //A block starts at p
+
+  //We moeten het aantal nj particles delen door het aantal blocks
+  //zodat we weten hoeveel nj particles we per block moeten verwerken
+  //We willen geen if-statements  in de device code dus moeten we zorgen
+  //dat als we meer lezen dan nodig dat dit nullen zijn
+  //Ook kunnen we eventueel het aantal blocks lager maken.
+  //Stel nj = 512
+  //p*q = 256
+//  per block: 512 / 256 = 2 blocks
+
+//nj = 365
+//p*q = 256
+// 365 / 256 = 1.42
+// 1 vol block
+// 365-256 = 109  over, 
+// Dus moeten we nj aanvullen tot 512...maar we willen geen data overschrijven...
+//Dilema.....
+
+//Oplossing: 2 kernels   
+// 1 geoptimaliseerd voor nette/direct n-body
+// 1 met ifstatements voor iets als tree-code
+// Delen moeten we dan niet doen op overkoepelend nivo, maar bij devices
+// dus delen door 30 ipv delen door 256*ncudadevice
+//Maar het totaal aantal blocks, hangt af van het aantal particles
+//in the i-block, waardoor we meerdere i-blocks kunnen krijgen
+//Waardoor 30 ,zomaar 60, 90 oid kan worden
+//
+//
+//Als we het nu zo doen als met de tree-code?
+//Stel we hebben 15 i-particles, dan 256/15 = 17.066666 , dus we kunnen 17 stukken tegelijk bewerken
+//in een thread block, en zijn er (256-17*15) = 1 threads over die niets berekenen
+//
+//
+
+
+//   //The i-particle for which we perform the force calculation
+//   int iReadLocation = threadIdx.x % ni;
+//   
+//   //The number of loops we have to perform 
+//   int iThread           = threadIdx.x   / ni;
+//   int nThreads          = blockDim.x    / ni;
+//   int nPerThread        = blockDim.x    / nThreads;
+//   int j0                = iThread       * nPerThread; //Start location of the loop
+//   int j1                = (iThread+1)   * nPerThread; //End location of the loop
+//   if(iThread+1 >= nThreads)
+//     j1 = blockDim.x;    //End location of the last iThread block is different!
+  
+  
+  
+//   int i_thread     = threadIdx.x/n_in_cell;
+//   int n_threads    = blockDim.x/n_in_cell;
+//   int n_per_thread = blockDim.x/n_threads;
+//   int j0 =  i_thread    * n_per_thread;
+//   int j1 = (i_thread+1) * n_per_thread;
+//   if (i_thread + 1 >= n_threads) 
+//     j1 = blockDim.x;
+//     for (int j = j0; j < j1; j++) {
+//       n_inter++;
+//       acc = body_node_interaction(acc, body_pos, 
+//                                   shared_com[j],
+//                                   shared_Qu[j], shared_Qd[j]);
+//     }
+
+
+
+
+//Keuze afhankelijk van aantal nj particles bij aanroep naar calc_firsthalf
+
+//   inline int n_norm(int n, int j) {
+//   n = ((n-1)/j) * j + j;
+//   if (n == 0) n = j;
+//   return n;
+
+
+// }
+
+// if(nj == 1023)
+// {
+//   cerr << "EXTRA TEST \n";
+//   sapdevice->pPos_j.d2h();
+//   sapdevice->pPos_j[1023].w = 100.0;
+//   sapdevice->pPos_j[1023].x = 100.0;
+//   sapdevice->pPos_j.h2d();
+// }
+
+
+
+  #ifdef DEBUG_PRINT  
+   fprintf(stderr, "p: %d q: %d  nj: %d nj_scaled: %d thisblockscaled: %d nthreads: %d ni: %d\n",
+           p,q,nj, nj_scaled, thisBlockScaled, nthreads, ni);
+  #endif
+  
+/*fprintf(stderr, "Dev: %d p: %d q: %d  nj: %d nj_scaled: %d thisblockscaled: %d nthreads: %d ni: %d\n",
+           omp_get_thread_num(), p,q,nj, nj_scaled, thisBlockScaled, nthreads, ni);*/
+           
+  //CUDA_SAFE_CALL(cudaMemcpyToSymbol("EPS2", &gpu.EPS2, sizeof(float), 0, cudaMemcpyHostToDevice));
+  sapdevice->evalgravKernel.set_arg<int  >(0, &nj);      //Total number of j particles
+  sapdevice->evalgravKernel.set_arg<int  >(1, &thisBlockScaled);
+  sapdevice->evalgravKernel.set_arg<int  >(2, &nthreads);
+//   sapdevice->evalgravKernel.set_arg<int  >(3, &startProcOffset);
+  sapdevice->evalgravKernel.set_arg<void*>(3, sapdevice->pPos_j.ptr());
+  sapdevice->evalgravKernel.set_arg<void*>(4, sapdevice->pVel_j.ptr());  
+  sapdevice->evalgravKernel.set_arg<void*>(5, sapdevice->id_j.ptr());  
+  sapdevice->evalgravKernel.set_arg<void*>(6, sapdevice->pos_i.ptr());  
+  sapdevice->evalgravKernel.set_arg<void*>(7, sapdevice->vel_i.ptr());
+  sapdevice->evalgravKernel.set_arg<void*>(8, sapdevice->acc_i.ptr());  
+  sapdevice->evalgravKernel.set_arg<void*>(9, sapdevice->jrk_i.ptr());  
+  sapdevice->evalgravKernel.set_arg<void*>(10, sapdevice->id_i.ptr());  
+  sapdevice->evalgravKernel.set_arg<void*>(11, sapdevice->ngb_list_i.ptr());  
+  sapdevice->evalgravKernel.set_arg<double>(12, &EPS2);
+  sapdevice->evalgravKernel.set_arg<int>(13, NULL, (shared_mem_size)/sizeof(int));  //Shared memory
+  
+//   sapdevice->evalgravKernel.setWork(p, NBLOCKS, q, 1);  //dim3 threads(p, q, 1); dim3 grid(NBLOCKS, 1, 1);
+//    sapdevice->evalgravKernel.setWork_threadblock2D(p, q, NBLOCKS, 1);
+  
+  sapdevice->evalgravKernel.setWork_threadblock2D(p, q, NBLOCKS, 1);
+//   sapdevice->evalgravKernel.printWorkSize();
+  sapdevice->evalgravKernel.execute();  
+  
+// exit(0);
+// cerr << "test4\n"; 
+//   int NBLOCKS2 = 30;
+//    q = 1;
+//   nj_scaled       = n_norm(nj, q*NBLOCKS2);
+//   thisBlockScaled = nj_scaled/(NBLOCKS2*q);
+//   nthreads        = NTHREADS;
+//   
+//   
+// 
+//   int shared_mem_size2 = 256*(sizeof(DS4) + sizeof(float4));  
+//   sapdevice->evalgravKernel_new.set_arg<int  >(0, &nj);      //Total number of j particles
+//   sapdevice->evalgravKernel_new.set_arg<int  >(1, &thisBlockScaled);
+//   sapdevice->evalgravKernel_new.set_arg<int  >(2, &nthreads);
+//   sapdevice->evalgravKernel_new.set_arg<int  >(3, &startProcOffset);
+//   sapdevice->evalgravKernel_new.set_arg<void*>(4, sapdevice->pPos_j.ptr());
+//   sapdevice->evalgravKernel_new.set_arg<void*>(5, sapdevice->pVel_j.ptr());  
+//   sapdevice->evalgravKernel_new.set_arg<void*>(6, sapdevice->id_j.ptr());  
+//   sapdevice->evalgravKernel_new.set_arg<void*>(7, sapdevice->pos_i.ptr());  
+//   sapdevice->evalgravKernel_new.set_arg<void*>(8, sapdevice->vel_i.ptr());
+//   sapdevice->evalgravKernel_new.set_arg<void*>(9, sapdevice->acc_i.ptr());  
+//   sapdevice->evalgravKernel_new.set_arg<void*>(10, sapdevice->jrk_i.ptr());  
+//   sapdevice->evalgravKernel_new.set_arg<void*>(11, sapdevice->id_i.ptr());  
+//   sapdevice->evalgravKernel_new.set_arg<void*>(12, sapdevice->ngb_list_i.ptr());  
+//   sapdevice->evalgravKernel_new.set_arg<double>(13, &EPS2);
+//   sapdevice->evalgravKernel_new.set_arg<int>(14, NULL, (shared_mem_size2)/sizeof(int));  //Shared memory
+//   sapdevice->evalgravKernel_new.set_arg<int>(15, &ni);  //Shared memory
+//   
+// //   sapdevice->evalgravKernel.setWork(p, NBLOCKS, q, 1);  //dim3 threads(p, q, 1); dim3 grid(NBLOCKS, 1, 1);
+// //    sapdevice->evalgravKernel.setWork_threadblock2D(p, q, NBLOCKS, 1);
+// // if(ni == 95)
+// //   sapdevice->evalgravKernel_new.setWork_threadblock2D(256, 1, 1, 1);
+// // else
+// 
+// 
+// 
+//   sapdevice->evalgravKernel_new.setWork_threadblock2D(256, 1, NBLOCKS2, 1);
+// 
+//   sapdevice->evalgravKernel_new.execute();
+//   
+
+//    exit(0);
+//    sapdevice->acc_i.d2h();
+// //    for(int j=0; j < q*NBLOCKS; j++)
+//   for(int j=0; j < q*NBLOCKS; j++)
+//     for(int i=0; i < 100 ; i++)
+//     {
+//         printf("TEST:[%d\t%d] %f\t%f\t%f\t%f\n", j, i, sapdevice->acc_i[j*ni + i].x, sapdevice->acc_i[j*ni + i].y, 
+//                                                       sapdevice->acc_i[j*ni + i].z, sapdevice->acc_i[j*ni + i].w);
+//     }
+   
+   
+//    
+//    if(ni == 95) 
+//    {cuCtxSynchronize();
+//      exit(0);
+//    }
+
+//   q = 1;
+//   q = min(NTHREADS/ni, 32);
+//   nj_scaled       = n_norm(nj, q*NBLOCKS);
+//   thisBlockScaled = nj_scaled/(NBLOCKS*q);
+//   nthreads        = NTHREADS;
+   //Kernel reduce
+  nthreads        = NBLOCKS;
+  int nblocks     = ni;
+  shared_mem_size = NBLOCKS*(2*sizeof(float4) + 3*sizeof(int)); 
+  
+  //Double Precision!!
+  shared_mem_size = NBLOCKS*(2*sizeof(double4) + 2*sizeof(int) + sizeof(double));   
+
+  sapdevice->reduceForces.setWork_threadblock2D(nthreads, 1, nblocks, 1);
+  
+  int tempNTHREADS  = NTHREADS;
+
+  int tempNGBOffset = NGB_PB*NBLOCKS*NTHREADS;
+  
+  sapdevice->reduceForces.set_arg<void*>(0, sapdevice->acc_i.ptr());
+  sapdevice->reduceForces.set_arg<void*>(1, sapdevice->jrk_i.ptr());
+  sapdevice->reduceForces.set_arg<void*>(2, sapdevice->ds_i.ptr());
+  sapdevice->reduceForces.set_arg<void*>(3, sapdevice->vel_i.ptr());  
+  sapdevice->reduceForces.set_arg<int  >(4, &tempNTHREADS);  
+  sapdevice->reduceForces.set_arg<int  >(5, &tempNGBOffset);  
+  sapdevice->reduceForces.set_arg<void*>(6, sapdevice->ngb_list_i.ptr());
+  sapdevice->reduceForces.set_arg<int>(7, NULL, (shared_mem_size)/sizeof(int));  //Shared memory  
+  
+//   sapdevice->reduceForces.printWorkSize();
+  sapdevice->reduceForces.execute();   
+  
+//    sapdevice->acc_i.d2h();
+//    for(int i=0; i < 4; i++)
+//    {
+//        printf("TEST2: %f\t%f\t%f\t%f\n", sapdevice->acc_i[i].x, sapdevice->acc_i[i].y, 
+//                                                     sapdevice->acc_i[i].z, sapdevice->acc_i[i].w);
+//    }
+//      
+//      if(ni == 95){ cerr << "Geen crash! \n"; exit(0);}
+  return 0.0;
+  
+} //end evaluate gravity
+
+
+
+
+
+
+  

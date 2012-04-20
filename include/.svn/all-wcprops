@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 37
+/projects/sapporo2/!svn/ver/2/include
+END
+cudadev.h
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/projects/sapporo2/!svn/ver/8/include/cudadev.h
+END
+ocldev.h
+K 25
+svn:wc:ra_dav:version-url
+V 46
+/projects/sapporo2/!svn/ver/3/include/ocldev.h
+END
+defines.h
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/projects/sapporo2/!svn/ver/9/include/defines.h
+END

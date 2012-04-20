@@ -1,0 +1,35 @@
+K 25
+svn:wc:ra_dav:version-url
+V 34
+/projects/sapporo2/!svn/ver/1/CUDA
+END
+kernels6thDP.cu
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/projects/sapporo2/!svn/ver/8/CUDA/kernels6thDP.cu
+END
+kernelsG5SP.cu
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/projects/sapporo2/!svn/ver/8/CUDA/kernelsG5SP.cu
+END
+kernels4th.cu
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/projects/sapporo2/!svn/ver/5/CUDA/kernels4th.cu
+END
+kernelsG5DS.cu
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/projects/sapporo2/!svn/ver/5/CUDA/kernelsG5DS.cu
+END
+kernels4thDP.cu
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/projects/sapporo2/!svn/ver/8/CUDA/kernels4thDP.cu
+END
