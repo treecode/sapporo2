@@ -9,7 +9,7 @@ OCLPATH  = /opt/AMDAPP
 
 OFLAGS = -O0
 OFLAGS = -O3
-OFLAGS += -g -Wall -fopenmp  -D_OCL_
+OFLAGS += -g -Wextra -Wstrict-aliasing=2 -fopenmp  -D_OCL_
 CXXFLAGS =  -fPIC $(OFLAGS) -I$(OCLPATH)/include 
 
 
