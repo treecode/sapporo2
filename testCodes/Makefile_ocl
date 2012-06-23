@@ -1,0 +1,66 @@
+CXX = g++
+CC  = gcc
+LD  = g++ 
+F90  = ifort
+
+.SUFFIXES: .o .cpp .ptx .cu
+
+SAPPOROPATH=../lib/
+SAPLIB2 = sapporo_ocl
+SAPLIB = lib$(SAPLIB2).a
+
+CUDA_TK  = /usr/local/cuda
+
+
+OFLAGS = -g -Wall -fopenmp 
+CXXFLAGS =  -fPIC $(OFLAGS) -D_OCL_
+
+LDFLAGS = -lOpenCL -fopenmp  
+
+INCLUDEPATH = $(SAPPOROPATH)/include 
+CXXFLAGS  += -I$(INCLUDEPATH) -I./ -I $(SAPPOROPATH) -I$(CUDA_TK)/include 
+
+
+SRCPATH = src
+SRC = test_gravity_block.cpp  test_gravity_block_6th.cpp test_performance_rangeN.cpp test_performance_blockStep.cpp test_performance_rangeN_6th.cpp
+OBJ = $(SRC:%.cpp=%_ocl.o)
+
+PROG = test_gravity_block_ocl test_gravity_block_6th_ocl test_performance_rangeN_ocl test_performance_blockStep_ocl test_performance_rangeN_6th_ocl
+
+all: $(OBJ) $(PROG) kernels
+
+kernels:
+	ln -s $(SAPPOROPATH)/OpenCLKernels OpenCL
+
+test_gravity_block_ocl : test_gravity_block_ocl.o
+	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2)
+
+test_gravity_block_6th_ocl : test_gravity_block_6th_ocl.o
+	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2)    
+
+test_performance_rangeN_ocl : test_performance_rangeN_ocl.o
+	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2)  
+
+test_performance_blockStep_ocl : test_performance_blockStep_ocl.o
+	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) 
+
+test_performance_rangeN_6th_ocl : test_performance_rangeN_6th_ocl.o
+	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) 
+
+%_ocl.o: $(SRCPATH)/%.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+
+clean:
+	/bin/rm -rf *.o *.ptx *.a $(PROG)
+
+
+$(OBJ): $(SAPPOROPATH)/$(SAPLIB)
+
+
+
+
+
+
+
+

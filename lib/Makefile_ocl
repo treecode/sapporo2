@@ -9,8 +9,8 @@ CUDA_TK  = /usr/local/cuda
 
 #OFLAGS = -O3 -g -Wall -fopenmp  -D_OCL_
 #OFLAGS = -O3 -g -Wall -fopenmp
-#OFLAGS = -g -Wall -fopenmp -D_OCL_
-OFLAGS = -g -Wall -fopenmp 
+#OFLAGS = -g -Wall -fopenmp
+OFLAGS = -g -Wall -fopenmp  -D_OCL_
 CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include 
 #CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include -D NTHREADS=${curNTHREADS} -D NPIPES=${curNPIPES} -D NBLOCKS_PER_MULTI=${curNMULTI} 
 
@@ -25,7 +25,7 @@ NVCCFLAGS = -arch sm_20
 # Use with Mac OS X
 # NVCCFLAGS = -arch sm_12 -Xcompiler="-Duint=unsigned\ int"
 
-LDFLAGS = -lcuda -fopenmp 
+LDFLAGS = -lOpenCL -fopenmp 
 
 
 INCLUDEPATH = ./include
@@ -34,28 +34,25 @@ NVCCFLAGS += -I$(INCLUDEPATH) -I./
 
 INTERFACEPATH =./interfaces
 
-CUDAKERNELSPATH = ./CUDAKernels
-CUDAKERNELS = kernels4th.cu  kernels4thDP.cu kernels6thDP.cu kernelsG5DS.cu kernelsG5SP.cu
-
-CUDAPTX = $(CUDAKERNELS:%.cu=$(CUDAKERNELSPATH)/%.ptx)
-
 SRCPATH = src
 SRC = sapporohostclass.cpp sapporoG6lib.cpp sapporoYeblib.cpp sapporoG5lib.cpp sapporo6thlib.cpp
-OBJ = $(SRC:%.cpp=%.o)
+OBJ = $(SRC:%.cpp=%_ocl.o)
 
-LIBOBJ = sapporohostclass.o $(INTERFACEPATH)/sapporoG6lib.o $(INTERFACEPATH)/sapporoYeblib.o $(INTERFACEPATH)/sapporoG5lib.o
-TARGET = libsapporo.a
+LIBOBJ = sapporohostclass_ocl.o $(INTERFACEPATH)/sapporoG6lib_ocl.o $(INTERFACEPATH)/sapporoYeblib_ocl.o $(INTERFACEPATH)/sapporoG5lib_ocl.o
+TARGET = libsapporo_ocl.a
 
 
 all:	  $(OBJ) $(CUDAPTX) $(TARGET)
-kernels:  $(CUDAPTX)
-
 
 $(TARGET): $(LIBOBJ)
 	ar qv $@ $^        
 
-%.o: $(SRCPATH)/%.cpp
+%_ocl.o: $(SRCPATH)/%.cpp 
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(INTERFACEPATH)/%_ocl.o: $(INTERFACEPATH)/%.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
 
 $(CUDAKERNELSPATH)/%.ptx: $(CUDAKERNELSPATH)/%.cu
 	$(NVCC) $(NVCCFLAGS) -ptx $< -o $@
@@ -68,14 +65,9 @@ clean:
 $(OBJ): $(INCLUDEPATH)/*.h
 
 
-sapporohostclass.o : $(INCLUDEPATH)/sapporohostclass.h $(INCLUDEPATH)/sapdevclass.h $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernels4th.ptx : $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernels4thDP.ptx : $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernels6thDP.ptx : $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernelsG5DS.ptx : $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernelsG5SP.ptx : $(INCLUDEPATH)/defines.h
+sapporohostclass_ocl.o : $(INCLUDEPATH)/sapporohostclass.h $(INCLUDEPATH)/sapdevclass.h $(INCLUDEPATH)/defines.h
 
-libsapporo.a : sapporohostclass.o
+libsapporo_ocl.a : sapporohostclass_ocl.o
 
 
 
