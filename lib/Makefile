@@ -12,13 +12,15 @@ CUDA_TK  = /usr/local/cuda
 #OFLAGS = -g -Wall -fopenmp -D_OCL_
 OFLAGS = -g -Wall -fopenmp 
 CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include 
+
+#Below line is used when compiling for testing
 #CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include -D NTHREADS=${curNTHREADS} -D NPIPES=${curNPIPES} -D NBLOCKS_PER_MULTI=${curNMULTI} 
 
 
 # NVCCFLAGS = -D_DEBUG -O0 -g -I$(CUDA_SDK)/common/inc -arch=sm_12 --maxrregcount=64  --opencc-options -OPT:Olimit=0 -I$(CUDPP)/cudpp/include
 NVCC      = $(CUDA_TK)/bin/nvcc  
 
-#NVCCFLAGS = -arch sm_12  #<-- gives slightly faster kernels, because of limited DP support
+
 NVCCFLAGS = -arch sm_20
 #NVCCFLAGS = -arch sm_30 -D NTHREADS=${curNTHREADS} -D NPIPES=${curNPIPES} -D NBLOCKS_PER_MULTI=${curNMULTI}
 
