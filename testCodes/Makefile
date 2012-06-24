@@ -31,7 +31,7 @@ all: $(OBJ) $(PROG) kernels
 
 
 kernels:
-	ln -s $(SAPPOROPATH)/CUDAKernels CUDA
+	ln -s $(SAPPOROPATH)/CUDAKernels/ CUDA/
 
 #$(PROG): $(OBJ)
 #	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -lsapporo

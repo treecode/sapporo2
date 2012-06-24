@@ -54,7 +54,39 @@ int main(int argc, char *argv[]) {
 //   grav.open("CUDA/kernels4th.ptx", cluster_id, 1, 1);
   int devices[] = {0,1,2,3};
 //  grav.open("CUDA/kernels4thDP.ptx",devices , 1, 1);
-  grav.open("CUDA/kernels4th.ptx",devices , 1, 1);
+//   grav.open("CUDA/kernels4th.ptx",devices , 1, 1);
+  
+  std::string kernelFile;
+  
+  if (argc > 2)
+  {
+    kernelFile.assign(argv[2]);
+  }
+  else
+  {    
+    #ifdef _OCL_
+      kernelFile.assign("OpenCL/kernels4th.cl");
+    #else
+      kernelFile.assign("CUDA/kernels4th.ptx");
+    #endif
+  }
+  
+  int integrationOrder = 1;     //Fourth
+  int integrationPrecision = 0; //Default double-single
+  int nDevices = 1;
+  
+ 
+  if (argc > 3) integrationOrder        = atoi(argv[3]);
+  if (argc > 4) integrationPrecision    = atoi(argv[4]);
+  if (argc > 5) nDevices                = atoi(argv[5]);  
+ 
+  
+  fprintf(stderr, "%s is using: n: %d\tDevices: %d\tIntegrationOrder: %d\tIntegrationPrecision: %d\tFile: %s\n",
+          argv[0], n, nDevices, integrationOrder, integrationPrecision, kernelFile.c_str());
+  
+//   int sapporo::open(std::string kernelFile, int *devices, int nprocs = 1, int order = FOURTH, int precision = DEFAULT)  
+  grav.open(kernelFile.c_str(),devices, nDevices, integrationOrder, integrationPrecision);
+    
   
   int ipmax = grav.get_n_pipes();
   double *i_nene = new double[ipmax];
