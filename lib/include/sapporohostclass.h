@@ -152,9 +152,8 @@ protected:
   
   bool isFirstSend;             //Used to check if this is the first time we sent particles to the
                                 //device, so we have to allocate memory
-  int integrationOrder;         //Order of the ingtegrator we use, should be set during open call, default is fourth order
-                        
-
+  int integrationOrder;         //Order of the integrator we use, should be set during open call, default is fourth order
+  int integrationPrecision;     //The precision of the integrator for shared-memory calculation. Default is DEFAULT
   
 //TODO ask EG why we increase the i particles 
 public:
@@ -181,7 +180,8 @@ public:
     nj_updated  = false;
     
     
-    integrationOrder = FOURTH;
+    integrationOrder            = FOURTH;
+    integrationPrecision        = DEFAULT;
     
 
   };
@@ -195,7 +195,9 @@ public:
   void send_i_particles_to_device(int i);
     
   //Library interface functions
-  int open(std::string kernelFile, int *devices, int nprocs, int order);
+//   int open(std::string kernelFile, int *devices, int nprocs, int order, int precision);
+  int open(std::string kernelFile, int *devices, int nprocs = 1, 
+           int order = FOURTH, int precision = DEFAULT);
   int close();
   int get_n_pipes();
   int set_time(double ti);

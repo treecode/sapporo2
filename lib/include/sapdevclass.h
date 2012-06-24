@@ -15,7 +15,8 @@ to allocate, load, start functions, etc.
 
 // #define _OCL_
 
-enum { GRAPE5 = 0, FOURTH, SIXTH, EIGHT};        //0, 1, 2, 3
+enum { GRAPE5   = 0, FOURTH, SIXTH, EIGHT};        //0, 1, 2, 3
+enum { DEFAULT  = 0, DOUBLE}; //defualt is 0, double precision 1
 
 #ifdef _OCL_
 #include "include/ocldev.h"
