@@ -8,6 +8,7 @@
 #include <iostream>
 #include <cmath>
 #include <string>
+#include <cstring>
 #include <memory.h>
 #include <cstdio>
 #include <cstdlib>
@@ -94,6 +95,7 @@ namespace dev {
 
     int multiProcessorCount;
     int workGroupSizeMultiple;
+    std::string                deviceName;    
 
   public:
     context() {
@@ -194,7 +196,9 @@ namespace dev {
 	  }
 	}
       }
-
+      
+      //Not import on CUDA, we use Compute Capability
+      deviceName.assign("");
 
       //Retrieve CC of the selected device
       cuDeviceComputeCapability(&ccMajor, &ccMinor, Device);
@@ -210,7 +214,10 @@ namespace dev {
       ContextFlag = true;
     }
 
-
+    const int getComputeCapabilityMajor() const {return ccMajor;} 
+    const int getComputeCapabilityMinor() const {return ccMajor;}
+    std::string getDeviceName() const {return deviceName;}
+    
     const CUcontext& get_context() const {return Context;}
     const int        get_command_queue() const {return -1;}
     const CUdevice&  get_device()        const {return Device;}

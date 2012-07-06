@@ -135,7 +135,14 @@ namespace sapporo2 {
         
         integrationOrder = order;
         
-        NBLOCKS = nMulti*NBLOCKS_PER_MULTI;
+        //Get number of blocks per multiprocessor
+        int blocksPerMulti = 2;
+        blocksPerMulti = getBlocksPerSM(context.getComputeCapabilityMajor(),
+                                        context.getComputeCapabilityMinor(),
+                                        context.getDeviceName());
+        
+        NBLOCKS = nMulti*blocksPerMulti;
+        cerr << "Using  " << blocksPerMulti << " blocks per multi-processor for a total of : " << NBLOCKS << std::endl;
         //NBLOCKS = 1 ;
         return 0;
       }

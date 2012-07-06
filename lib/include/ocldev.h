@@ -168,6 +168,12 @@ namespace dev {
     cl_platform_id              PlatformID;
 
     int multiProcessorCount;
+    
+    std::string                deviceName;
+    int                        deviceVendorID;
+    int                        ccMajor; //NVIDIA only
+    int                        ccMinor; //NVIDIA only
+    
 
   public:
     context() : ContextFlag(false), CommandQueueFlag(false) {};
@@ -222,8 +228,11 @@ namespace dev {
       std::cerr << "Found " << DeviceCount << " suitable devices: \n";
       for (cl_uint dev = 0; dev < DeviceCount; dev++) {
 	char device_string[1024];
-        oclSafeCall(clGetDeviceInfo(Devices[dev], CL_DEVICE_NAME, sizeof(device_string), &device_string, NULL));
-	std::cerr << " " << dev << ": " << device_string << "\n";
+        char device_vendor[1024];        
+        oclSafeCall(clGetDeviceInfo(Devices[dev], CL_DEVICE_NAME, sizeof(device_string), &device_string, NULL));	
+        oclSafeCall(clGetDeviceInfo(Devices[dev], CL_DEVICE_VENDOR, sizeof(device_vendor), &device_vendor, NULL));
+        
+        std::cerr << " " << dev << ": " << device_string << "\tVendor: " << device_vendor << std::endl;
       }
 
       return DeviceCount;
@@ -256,20 +265,54 @@ namespace dev {
 	  } else {
 	    devId = dev;
 	    CommandQueue = clCreateCommandQueue(Context, Devices[devId], 0, &ciErrNum);
-	    oclCheckError(ciErrNum);
+	    oclCheckError(ciErrNum);            
 	    break;
 	  }
 
 	}
       }
+      
+      
+      char device_string[1024];
+      oclSafeCall(clGetDeviceInfo(Devices[dev], CL_DEVICE_NAME, sizeof(device_string), &device_string, NULL));
+      deviceName.assign(device_string);
+
+      oclSafeCall(clGetDeviceInfo(Devices[dev], CL_DEVICE_VENDOR_ID, sizeof(deviceVendorID), &deviceVendorID, NULL));
 
       //Get the number of multiprocessors of the device
       oclSafeCall(clGetDeviceInfo(Devices[devId], CL_DEVICE_MAX_COMPUTE_UNITS,
                                   sizeof(multiProcessorCount), &multiProcessorCount, NULL));
       fprintf(stderr, "Device has: %d \t multiprocessors \n", multiProcessorCount);
-
+      
+      oclSafeCall(clGetDeviceInfo(Devices[devId], CL_DEVICE_EXTENSIONS, 
+                                  sizeof(device_string), &device_string, NULL));       
+      //Check if the device has nvidia extensions such that we can query the 
+      //compute capability
+      std::string deviceString(device_string);
+      if(deviceString.find("cl_nv_device_attribute_query") != string::npos)
+      {
+        //If we don't include the cl_ext file and/or use a different vendor these query strings
+        //are not defined so do it here
+        #ifndef CL_DEVICE_COMPUTE_CAPABILITY_MAJOR_NV                                                                                                 
+          /* cl_nv_device_attribute_query extension - no extension #define since it has no functions */                                               
+          #define CL_DEVICE_COMPUTE_CAPABILITY_MAJOR_NV       0x4000                                                                                  
+          #define CL_DEVICE_COMPUTE_CAPABILITY_MINOR_NV       0x4001    
+        #endif
+        
+        clGetDeviceInfo(Devices[devId], CL_DEVICE_COMPUTE_CAPABILITY_MAJOR_NV,
+                        sizeof(cl_uint), &ccMajor, NULL);                     
+        clGetDeviceInfo(Devices[devId], CL_DEVICE_COMPUTE_CAPABILITY_MINOR_NV,
+                        sizeof(cl_uint), &ccMinor, NULL);    
+      }
+      else
+      {
+        ccMajor = ccMinor = -1; //Non NVIDIA
+      }
     }
 
+    const int getComputeCapabilityMajor() const {return ccMajor;} 
+    const int getComputeCapabilityMinor() const {return ccMajor;}
+    std::string getDeviceName() const {return deviceName;}
     const cl_context&       get_context()       const {return Context;}
     const cl_command_queue& get_command_queue() const {return CommandQueue;}
     const cl_device_id&     operator[](const int i) const {return Devices[i];}
