@@ -25,6 +25,8 @@ inline int getBlocksPerSM(int devMajor, int devMinor, std::string deviceName)
 {
   switch(devMajor)
   {
+    devMinor = devMinor; //Prevent unused warnings
+    
     case -1:
       //Non nvidia
       if(deviceName.find("Tahiti") != std::string::npos)

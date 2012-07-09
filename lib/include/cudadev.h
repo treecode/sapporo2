@@ -148,7 +148,7 @@ namespace dev {
       fprintf(stderr, "Compute mode: %d.%d Target: %d \n", ccMajor, ccMinor, defaultComputeMode);
    }
 
-    const int getDeviceCount() {
+    int getDeviceCount() {
       assert(InitFlag);
       std::cerr << "Getting list of CUDA devices ...\n";
 
@@ -214,19 +214,19 @@ namespace dev {
       ContextFlag = true;
     }
 
-    const int getComputeCapabilityMajor() const {return ccMajor;} 
-    const int getComputeCapabilityMinor() const {return ccMajor;}
+    int getComputeCapabilityMajor() const {return ccMajor;} 
+    int getComputeCapabilityMinor() const {return ccMajor;}
     std::string getDeviceName() const {return deviceName;}
     
     const CUcontext& get_context() const {return Context;}
-    const int        get_command_queue() const {return -1;}
+    int        get_command_queue() const {return -1;}
     const CUdevice&  get_device()        const {return Device;}
-    const CUdevice&  get_device(const int dev) const {return Device;}
+//     const CUdevice&  get_device(const int dev) const {return Device;}
 
     const int&  getDefaultComputeMode() const {return defaultComputeMode;}
 
-    const int        get_numberOfMultiProcessors() const { return multiProcessorCount;}
-    const int        get_workGroupSizeMultiple() const   { return workGroupSizeMultiple;}
+    int        get_numberOfMultiProcessors() const { return multiProcessorCount;}
+    int        get_workGroupSizeMultiple() const   { return workGroupSizeMultiple;}
 
   };
 
@@ -235,19 +235,25 @@ namespace dev {
   protected:
     CUcontext Context;
     bool ContextFlag;
+    bool pinned;
 
     size_t n;
     CUdeviceptr DeviceMem;
     int         DeviceMemFlags;
     std::vector<T> HostMem;
+    
+    T           *HostMemPinned;
 
     void cuda_free() {
-      cerr << "cuda free \n";
       if (n > 0) {
 	assert(ContextFlag);
 	cuSafeCall(cuMemFree(DeviceMem));
 	HostMem.clear();
         HostMem.resize(0);
+        if(pinned)
+        {
+          cuSafeCall(cuMemFreeHost((void*)HostMemPinned));
+        }
 	n = 0;
       }
     }
@@ -257,6 +263,9 @@ namespace dev {
       assert(!ContextFlag);
       Context      = context;
       ContextFlag  = true;
+            
+      if(null) ContextFlag = true; //Make compiler happy
+      
     }
 
   public:
@@ -280,18 +289,29 @@ namespace dev {
 
     void allocate(const int _n, const int flags = 0, bool pinned = false) {
       assert(ContextFlag);
+
       if (n > 0) cuda_free();
       n = _n;
       DeviceMemFlags = flags;
-
-      HostMem.resize(n);
+      if(!pinned)
+      {
+        HostMem.resize(n);
+      }
+      else
+      { 
+        cuSafeCall(cuMemAllocHost((void**)&HostMemPinned, n*sizeof(T)));
+      }
       cuSafeCall(cuMemAlloc(&DeviceMem, n*sizeof(T)));
+      
+      this->pinned = pinned;
     }
 
     void realloc(const unsigned int _n, const int flags = 0, bool copyBack = true)
     {
       //Reallocate the array
       assert(ContextFlag);
+      
+      DeviceMemFlags = flags; //make compiler happy
 
       if(_n != n  && _n > 0)
       {
@@ -301,7 +321,24 @@ namespace dev {
         if(copyBack)
           d2h();
 
-        HostMem.resize(_n);
+        if(pinned)
+        {
+          //No realloc function so do it by hand
+          T *tmp_ptr;            
+          cuSafeCall(cuMemAllocHost((void**)&tmp_ptr, _n*sizeof(T)));        
+          //Copy old content to newly allocated mem
+          int tmpSize = std::min((int)n, (int)_n);
+                
+          //Copy the old data to the new pointer and free the old location
+          memcpy (((void*) tmp_ptr), ((void*) HostMemPinned), tmpSize*sizeof(T)); 
+          cuSafeCall(cuMemFreeHost((void*)HostMemPinned));
+          HostMemPinned = tmp_ptr;     
+        }
+        else
+        {
+          HostMem.resize(_n);
+        }
+        
         cuSafeCall(cuMemFree(DeviceMem));
         n = _n;
         cuSafeCall(cuMemAlloc(&DeviceMem, n*sizeof(T)));
@@ -314,7 +351,10 @@ namespace dev {
     void zeroMem() {
       assert(ContextFlag);
       assert(n > 0);
-      memset(&HostMem[0], 0, n*sizeof(T));
+      if(pinned)
+          memset(&HostMemPinned[0], 0, n*sizeof(T));      
+      else
+          memset(&HostMem[0], 0, n*sizeof(T));
       cuSafeCall(cuMemsetD8(DeviceMem, 0, n*sizeof(T)));
     }
 
@@ -322,7 +362,12 @@ namespace dev {
       const int n = in.size();
       allocate(n, DeviceMemFlags);
       for (int i = 0; i < n; i++)
-	HostMem[i] = in[i];
+      {
+        if(pinned)
+          HostMemPinned[i] = in[i];          	
+        else
+          HostMem[i] = in[i];          
+      }
     }
 
     void device2host() {d2h();}
@@ -335,13 +380,18 @@ namespace dev {
 
       offset = offset*sizeof(T);        //Convert the number into actual bytes
 
-      if (OCL_BLOCKING) {
-        cuSafeCall(cuMemcpyDtoH(&HostMem[0], DeviceMem+offset, number*sizeof(T)));
+      if (OCL_BLOCKING)
+      {
+        if(pinned){
+          cuSafeCall(cuMemcpyDtoH(&HostMemPinned[0], DeviceMem+offset, number*sizeof(T)));          
+        }else{
+          cuSafeCall(cuMemcpyDtoH(&HostMem[0], DeviceMem+offset, number*sizeof(T)));
+        }
       } else{
         //Async copy, ONLY works for page-locked memory therefore default parameter
         //is blocking.
-        assert(false); //        assert(pinned_mem);
-        cuSafeCall(cuMemcpyDtoHAsync(&HostMem[0], DeviceMem, number*sizeof(T), stream));
+        assert(pinned);
+        cuSafeCall(cuMemcpyDtoHAsync(&HostMemPinned[0], DeviceMem, number*sizeof(T), stream));
       }
     }
 
@@ -352,12 +402,16 @@ namespace dev {
       assert(number > 0);
 
       if (OCL_BLOCKING) {
-        cuSafeCall(cuMemcpyDtoH(&HostMem[0], DeviceMem, number*sizeof(T)));
+        if(pinned){
+          cuSafeCall(cuMemcpyDtoH(&HostMemPinned[0], DeviceMem, number*sizeof(T)));          
+        }else{
+          cuSafeCall(cuMemcpyDtoH(&HostMem[0], DeviceMem, number*sizeof(T)));
+        }
       } else{
         //Async copy, ONLY works for page-locked memory therefore default parameter
         //is blocking.
-        assert(false); //        assert(pinned_mem);
-        cuSafeCall(cuMemcpyDtoHAsync(&HostMem[0], DeviceMem, number*sizeof(T), stream));
+        assert(pinned);
+        cuSafeCall(cuMemcpyDtoHAsync(&HostMemPinned[0], DeviceMem, number*sizeof(T), stream));
       }
     }
 
@@ -366,14 +420,17 @@ namespace dev {
       assert(n > 0);
       assert(number > 0);
 
-
       if(OCL_BLOCKING) {
-        cuSafeCall(cuMemcpyHtoD(DeviceMem, &HostMem[0], number*sizeof(T)));
+        if(pinned){
+          cuSafeCall(cuMemcpyHtoD(DeviceMem, &HostMemPinned[0], number*sizeof(T)));
+        }else{
+          cuSafeCall(cuMemcpyHtoD(DeviceMem, &HostMem[0], number*sizeof(T)));
+        }          
       } else {
         //Async copy, ONLY works for page-locked memory therefore default parameter
         //is blocking.
-        assert(false); // assert(pinned_mem);
-        cuSafeCall(cuMemcpyHtoDAsync(DeviceMem, &HostMem[0], number*sizeof(T), stream));
+        assert(pinned);
+        cuSafeCall(cuMemcpyHtoDAsync(DeviceMem, &HostMemPinned[0], number*sizeof(T), stream));
       }
     }
 
@@ -383,25 +440,34 @@ namespace dev {
       assert(n > 0);
 
       if (OCL_BLOCKING) {
-        cuSafeCall(cuMemcpyDtoH(&HostMem[0], DeviceMem, n*sizeof(T)));
+        if(pinned){
+          cuSafeCall(cuMemcpyDtoH(&HostMemPinned[0], DeviceMem, n*sizeof(T)));          
+        }else{
+          cuSafeCall(cuMemcpyDtoH(&HostMem[0], DeviceMem, n*sizeof(T)));
+        }
       } else{
         //Async copy, ONLY works for page-locked memory therefore default parameter
         //is blocking.
-	assert(false); //        assert(pinned_mem);
-        cuSafeCall(cuMemcpyDtoHAsync(&HostMem[0], DeviceMem, n*sizeof(T), stream));
+        assert(pinned);
+        cuSafeCall(cuMemcpyDtoHAsync(&HostMemPinned[0], DeviceMem, n*sizeof(T), stream));
       }
     }
 
     void h2d(const bool OCL_BLOCKING  = true, const CUstream stream = 0)   {
       assert(ContextFlag);
       assert(n > 0);
+      
       if(OCL_BLOCKING) {
-        cuSafeCall(cuMemcpyHtoD(DeviceMem, &HostMem[0], n*sizeof(T)));
+        if(pinned){
+          cuSafeCall(cuMemcpyHtoD(DeviceMem, &HostMemPinned[0], n*sizeof(T)));
+        }else{
+          cuSafeCall(cuMemcpyHtoD(DeviceMem, &HostMem[0], n*sizeof(T)));
+        }          
       } else {
         //Async copy, ONLY works for page-locked memory therefore default parameter
         //is blocking.
-        assert(false); // assert(pinned_mem);
-        cuSafeCall(cuMemcpyHtoDAsync(DeviceMem, &HostMem[0], n*sizeof(T), stream));
+        assert(pinned);
+        cuSafeCall(cuMemcpyHtoDAsync(DeviceMem, &HostMemPinned[0], n*sizeof(T), stream));
       }
     }
 
@@ -410,26 +476,46 @@ namespace dev {
       assert(ContextFlag);
       if (n < src.n) {
 	cuda_free();
-	HostMem.resize(src.n);
-	allocate(src.n, DeviceMemFlags);
+// 	HostMem.resize(src.n);
+	allocate(src.n, DeviceMemFlags, this->pinned);
       }
 
       //Copy on the device
       cuSafeCall(cuMemcpyDtoD(DeviceMem, src.DeviceMem, n*sizeof(T)));
+      
       //Copy on the host
-      memcpy (((void*) &HostMem[0]), ((void*) &src[0]), n*sizeof(T));
+      if(pinned)
+      {
+        memcpy (((void*) &HostMemPinned[0]), ((void*) &src[0]), n*sizeof(T));        
+      }
+      else
+      {
+        memcpy (((void*) &HostMem[0]), ((void*) &src[0]), n*sizeof(T));
+      }
     }
 
-    const T& operator[] (const int i) const { return HostMem[i]; }
-    T& operator[](const int i) {return HostMem[i];}
+    const T& operator[] (const int i) const
+    {
+      if(pinned)
+        return HostMemPinned[i];       
+      else
+        return HostMem[i];       
+    }
+    T& operator[](const int i)
+    {
+      if(pinned)
+        return HostMemPinned[i];       
+      else
+        return HostMem[i];       
+    }    
 
     const CUdeviceptr& get_device_mem() {return DeviceMem;}
     void*   p() {return (void*)&DeviceMem;}
     void* ptr() {return p();}
-    const size_t size(){return n;}
+    size_t size(){return n;}
 
     const CUcontext& get_context() const {return Context;}
-    const int        get_command_queue() const {return -1;}
+    int        get_command_queue() const {return -1;}
   };
 
   class kernel {
@@ -456,8 +542,10 @@ namespace dev {
 
     int WorkGroupSizeMultiple;
     int WorkGroupMaxSize;
-
+    
     int computeMode;
+    
+    int CommandQueue; //Note this variable is not used only to prevent compiler warnings
 
     void clean() {
       KernelName     = (char*)malloc(256);
@@ -478,14 +566,15 @@ namespace dev {
     }
 
 
-double get_time_test() {
-  struct timeval Tvalue;
-  struct timezone dummy;
+    //Function to get wall-clock timings
+    double get_time_test() {
+      struct timeval Tvalue;
+      struct timezone dummy;
 
-  gettimeofday(&Tvalue,&dummy);
-  return ((double) Tvalue.tv_sec +
-          1.e-6*((double) Tvalue.tv_usec));
-}
+      gettimeofday(&Tvalue,&dummy);
+      return ((double) Tvalue.tv_sec +
+              1.e-6*((double) Tvalue.tv_usec));
+    }
 
 
     void setContext(const CUcontext &context, const int  &command_queue) {
@@ -494,6 +583,8 @@ double get_time_test() {
       ContextFlag  = true;
       WorkGroupSizeMultiple = 32;
       WorkGroupMaxSize = 256;
+      //In CUDA command_queue is not really used, this is to prevent unused warnings
+      CommandQueue = command_queue;
     }
 
 
@@ -592,15 +683,16 @@ double get_time_test() {
 
           std::cout << "Using compute mode: " << maxArchitecture << "\tSource file: " << KernelFilename << std::endl;
         }
-  //         std::cout << "Using compute mode: " << maxArchitecture << std::endl;
 
         std::string ptxSource;
         load_source(KernelFilename, ptxSource);
 
-  //         CU_SAFE_CALL(cuModuleLoad(&cuModule, hKernelFilename));
-
-  //         jitOptionCount = 0;
         cuSafeCall(cuModuleLoadDataEx(&cuModule, ptxSource.c_str(), jitOptionCount, jitOptions, (void **)jitOptVals));
+        
+        
+        //This is to make compiler happy about our unused variable compiler_options
+        temp.assign(compilerOptions);
+        
 
         delete[] jitOptVals;
         delete[] jitOptions;
@@ -794,20 +886,8 @@ double get_time_test() {
       if(sharedMemorySize > 0)
         cuSafeCall(cuFuncSetSharedSize(Kernel, sharedMemorySize));
 
-
-/*int res;
-      cuSafeCall(cuFuncGetAttribute(&res, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, Kernel));
-
-
-
-      fprintf(stderr,"TEST maxthread: %d   || %d %d %d  shmem %d \n",
-		      res,
-		      LocalWork[0],  LocalWork[1],  LocalWork[2], sharedMemorySize);
-*/		      
+      //Set the thread-block size configuration
       cuSafeCall(cuFuncSetBlockShape(Kernel,  LocalWork[0],  LocalWork[1],  LocalWork[2]));
-
-
-
 
 
 
@@ -851,21 +931,21 @@ double get_time_test() {
 //     fprintf(stderr, "Kernel: %s   TOOK: %lg\tNTHREAD: %d\tNPIPES: %d\tNMULTI: %d \n", KernelName,  get_time_test() - t0, NTHREADS, NPIPES, NBLOCKS_PER_MULTI);
 
 //      cuSafeCall(cuCtxSynchronize());
-
-
-
+  
+        //Prevent compiler warning, event variable is for OpenCL function definition compatability
+        event = event;
     }
     ////
 
     const CUfunction&  get_kernel() const {return Kernel;}
     const CUmodule&   get_program() const {return cuModule;}  //Program == module?
     const CUcontext& get_context() const {return Context;}
-    const int        get_command_queue() const {return -1;}
-    const int localDim()  const {return  LocalWork[0]* LocalWork[1];};
-    const int globalDim() const {return GlobalWork[0]*GlobalWork[1]*localDim();};
-    const int num_groups() const {return globalDim()/localDim();};
-    const int	            get_workGroupMultiple() const {return (int)WorkGroupSizeMultiple;}
-    const int               get_workGroupMaxSize()  const {return (int)WorkGroupMaxSize;}
+    int        get_command_queue() const {return -1;}
+    int localDim()  const {return  LocalWork[0]* LocalWork[1];};
+    int globalDim() const {return GlobalWork[0]*GlobalWork[1]*localDim();};
+    int num_groups() const {return globalDim()/localDim();};
+    int	            get_workGroupMultiple() const {return (int)WorkGroupSizeMultiple;}
+    int               get_workGroupMaxSize()  const {return (int)WorkGroupMaxSize;}
     
     
     

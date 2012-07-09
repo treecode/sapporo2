@@ -252,6 +252,10 @@ int sapporo::set_j_particle(int    address,
     cerr << "set_j_particle (Addr: " << address << "  Id: " << id << " )\n";
   #endif
 
+  //Prevent unused compiler warning
+  k18 = k18;
+    
+
   #ifdef REMAP
     //Put the address on a random other location
     address = remapList[address];
@@ -261,26 +265,37 @@ int sapporo::set_j_particle(int    address,
   nj_updated = true;  //There are particles that are updated
   int storeLoc = -1;    //-1 if isFirstSend, otherwise it will give direct location in memory
 
+  double4 temp4; 
+  double2 temp2;
+  
   if(isFirstSend)
   {
+
     //Store particles in temporary vectors
-    pos_j.push_back( (double4){x[0], x[1], x[2], mass} );
+    temp4.x = x[0]; temp4.y = x[1]; temp4.z = x[2]; temp4.w = mass;
+    pos_j.push_back(temp4);
     address_j.push_back(address);
 
     if(integrationOrder > GRAPE5)
     {
-      t_j.push_back((double2){tj, dtj});
-      vel_j.push_back( (double4){v[0],    v[1],    v[2],    eps} ); //Store eps in vel.w
-      acc_j.push_back( (double4){a2[0], a2[1], a2[2], 0.0} );
-      jrk_j.push_back( (double4){j6[0], j6[1], j6[2], 0.0} );
+      temp2.x = tj; temp2.y = dtj;
+      t_j.push_back(temp2);
+      temp4.x = v[0]; temp4.y = v[1]; temp4.z = v[2]; temp4.w = eps;
+      vel_j.push_back(temp4); //Store eps in vel.w
+      temp4.x = a2[0]; temp4.y = a2[1]; temp4.z = a2[2]; temp4.w = 0.0;
+      acc_j.push_back(temp4 );
+      temp4.x = j6[0]; temp4.y = j6[1]; temp4.z = j6[2]; temp4.w = 0.0;
+      jrk_j.push_back(temp4);
       id_j.push_back ( id);
     }
-
+      
     //For 6th and 8 order we need more parameters
     if(integrationOrder > FOURTH)
     {
-      snp_j.push_back( (double4){snp[0], snp[1], snp[2], 0.0} );
-      crk_j.push_back( (double4){crk[0], crk[1], crk[2], 0.0} );
+      temp4.x = snp[0]; temp4.y = snp[1]; temp4.z = snp[2]; temp4.w = 0.0;
+      snp_j.push_back(temp4);
+      temp4.x = crk[0]; temp4.y = crk[1]; temp4.z = crk[2]; temp4.w = 0.0;
+      crk_j.push_back(temp4);
     }
 
     nj_modified = pos_j.size();
@@ -326,28 +341,36 @@ int sapporo::set_j_particle(int    address,
     {
       //New, not set before particle, save address info and increase particles
       //on that specific device by one
-      mappingFromIndexToDevIndex[address] = (int4){dev, storeLoc, devAddr, -1};
+      int4 tempI4;
+      tempI4.x = dev; tempI4.y = storeLoc; tempI4.z = devAddr; tempI4.w = -1; 
+      mappingFromIndexToDevIndex[address] = tempI4;
       jMemAddresses[dev].count++;
     }
 
-
-    jMemAddresses[dev].pos_j[storeLoc]        = (double4){x[0], x[1], x[2], mass};
+    temp4.x = x[0]; temp4.y = x[1]; temp4.z = x[2]; temp4.w = mass;
+    jMemAddresses[dev].pos_j[storeLoc]        = temp4;
     jMemAddresses[dev].address[storeLoc]      = devAddr;
 
     if(integrationOrder > GRAPE5)
     {
-      jMemAddresses[dev].t_j[storeLoc]          = (double2){tj, dtj};
-      jMemAddresses[dev].vel_j[storeLoc]        = (double4){v[0],    v[1],    v[2],    eps};  //Store eps in vel.w
-      jMemAddresses[dev].acc_j[storeLoc]        = (double4){a2[0], a2[1], a2[2], 0.0};
-      jMemAddresses[dev].jrk_j[storeLoc]        = (double4){j6[0], j6[1], j6[2], 0.0};
+      temp2.x = tj; temp2.y = dtj;            
+      jMemAddresses[dev].t_j[storeLoc]          = temp2;
+      temp4.x = v[0]; temp4.y = v[1]; temp4.z = v[2]; temp4.w = eps;      
+      jMemAddresses[dev].vel_j[storeLoc]        = temp4;  //Store eps in vel.w
+      temp4.x = a2[0]; temp4.y = a2[1]; temp4.z = a2[2]; temp4.w = 0.0;            
+      jMemAddresses[dev].acc_j[storeLoc]        = temp4;
+      temp4.x = j6[0]; temp4.y = j6[1]; temp4.z = j6[2]; temp4.w = 0.0;
+      jMemAddresses[dev].jrk_j[storeLoc]        = temp4;
       jMemAddresses[dev].id_j[storeLoc]         = id;
     }
 
     //For 6th and 8 order we need more parameters
     if(integrationOrder > FOURTH)
     {
-      jMemAddresses[dev].snp_j[storeLoc]        = (double4){snp[0], snp[1], snp[2], 0.0};
-      jMemAddresses[dev].crk_j[storeLoc]        = (double4){crk[0], crk[1], crk[2], 0.0};
+      temp4.x = snp[0]; temp4.y = snp[1]; temp4.z = snp[2]; temp4.w = 0.0;      
+      jMemAddresses[dev].snp_j[storeLoc]        = temp4;
+      temp4.x = crk[0]; temp4.y = crk[1]; temp4.z = crk[2]; temp4.w = 0.0;      
+      jMemAddresses[dev].crk_j[storeLoc]        = temp4;
     }
   }
 
@@ -565,6 +588,10 @@ void sapporo::startGravCalc(int    nj,          int ni,
   #ifdef DEBUG_PRINT
     cerr << "calc_firsthalf ni: " << ni << "\tnj: " << nj << "\tnj_total: " << nj_total << "integrationOrder: "<< integrationOrder << endl;
   #endif
+    
+  //Prevent unused compiler warning
+  j6old  = j6old;
+  phiold = phiold;
 
   //Its not allowed to send more particles than n_pipes
   assert(ni <= get_n_pipes());
@@ -576,16 +603,19 @@ void sapporo::startGravCalc(int    nj,          int ni,
     initialize_firstsend();
   }
 
+  double4 temp4;
   //Copy i-particles to device structures
   for (int i = 0; i < ni; i++)
   {
-    pos_i[i] = (double4){ xi[i][0], xi[i][1], xi[i][2], h2[i]};
+    temp4.x  = xi[i][0]; temp4.y = xi[i][1]; temp4.z = xi[i][2]; temp4.w = h2[i];
+    pos_i[i] = temp4;
 
     if(integrationOrder > GRAPE5)
     {
       id_i[i]  = id[i];
 
-      vel_i[i] = (double4){ vi[i][0], vi[i][1], vi[i][2], eps2};
+      temp4.x  = vi[i][0]; temp4.y = vi[i][1]; temp4.z = vi[i][2]; temp4.w = eps2;      
+      vel_i[i] = temp4;
 
       if(eps2_i != NULL)  //Seperate softening for i-particles
         vel_i[i].w = eps2_i[i];
@@ -594,7 +624,8 @@ void sapporo::startGravCalc(int    nj,          int ni,
 
     if(integrationOrder > FOURTH)
     {
-      accin_i[i] =  (double4){ a[i][0], a[i][1], a[i][2], 0};
+      temp4.x    = a[i][0]; temp4.y = a[i][1]; temp4.z = a[i][2]; temp4.w = 0;      
+      accin_i[i] = temp4;
     }
 
     EPS2     = eps2;
@@ -678,6 +709,11 @@ int sapporo::getGravResults(int nj, int ni,
   #ifdef DEBUG_PRINT
     fprintf(stderr, "calc_lasthalf2 device= %d, ni= %d nj = %d callCount: %d\n", -1, ni, nj, callCount++);
   #endif
+    
+  //Prevent unused compiler warning    
+  nj = nj; index = index; xi = xi; vi = vi; eps2 = eps2; h2 = h2;
+  
+    
 //double t0 = get_time();
   double ds_min[NTHREADS];
   for (int i = 0; i < ni; i++) {
@@ -773,6 +809,9 @@ int sapporo::getGravResults(int nj, int ni,
 
 int sapporo::read_ngb_list(int cluster_id)
 {
+  //Prevent unused compiler warning    
+  cluster_id = cluster_id;
+    
 
  #ifdef DEBUG_PRINT
   fprintf(stderr, "read_ngb_list\n");
@@ -806,6 +845,8 @@ int sapporo::get_ngb_list(int cluster_id,
                          int maxlength,
                          int &nblen,
                          int nbl[]) {
+  //Prevent unused compiler warning    
+  cluster_id = cluster_id;  
 
 //   if (ipipe >= devs[0].ni) {
 //     fprintf(stderr, "Fatal! ipipe= %d >= dev.ni= %d. I give up.\n",
@@ -1214,6 +1255,7 @@ void sapporo::copyJInDev(int nj)
   #ifdef DEBUG_PRINT
     cerr << "copyJInDev nj: " << nj << endl;
   #endif
+  nj = nj;
   //This function is called inside an omp parallel section
 
   //If there are particles updated, put them in the correct locations

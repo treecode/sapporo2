@@ -182,7 +182,7 @@ namespace dev {
       if (CommandQueueFlag) clReleaseCommandQueue(CommandQueue);
     };
 
-    const int getPlatformInfo(std::ostream &s = std::cerr) {
+    int getPlatformInfo(std::ostream &s = std::cerr) {
 
       s << "Getting list of OpenCL platforms ...\n";
 
@@ -200,7 +200,7 @@ namespace dev {
       return numPlatforms;
     }
 
-    const int getDeviceCount(const cl_device_type device_type = CL_DEVICE_TYPE_GPU, const int platform_id = 0) {
+    int getDeviceCount(const cl_device_type device_type = CL_DEVICE_TYPE_GPU, const int platform_id = 0) {
       assert(!ContextFlag);
 
       std::cerr << "Getting list of OpenCL devices ...\n";
@@ -310,14 +310,14 @@ namespace dev {
       }
     }
 
-    const int getComputeCapabilityMajor() const {return ccMajor;} 
-    const int getComputeCapabilityMinor() const {return ccMajor;}
+    int getComputeCapabilityMajor() const {return ccMajor;} 
+    int getComputeCapabilityMinor() const {return ccMajor;}
     std::string getDeviceName() const {return deviceName;}
     const cl_context&       get_context()       const {return Context;}
     const cl_command_queue& get_command_queue() const {return CommandQueue;}
     const cl_device_id&     operator[](const int i) const {return Devices[i];}
     const cl_device_id&     device()  const {return Devices[devId];}
-    const int               get_numberOfMultiProcessors() const { return multiProcessorCount;}
+    int               get_numberOfMultiProcessors() const { return multiProcessorCount;}
 
   };
 
@@ -399,6 +399,8 @@ namespace dev {
       //Reallocate the array
       assert(ContextFlag);
 
+      DeviceMemFlags = flags; //Make compiler happy      
+      
       if(_n != n  && _n > 0)
       {
         //We want more memory, increase size on host, copy
@@ -537,7 +539,7 @@ namespace dev {
     const cl_mem& get_device_mem() const {return DeviceMem;}
     void*   p() const {return (void*)&DeviceMem;}
     void*   ptr() const {return p();}
-    const size_t size() const {return n;}
+    size_t size() const {return n;}
 
     const cl_context&       get_context()       const {return Context;}
     const cl_command_queue& get_command_queue() const {return CommandQueue;}
@@ -790,14 +792,16 @@ double get_time_test() {
       oclSafeCall(clSetKernelArg(Kernel, arg, size*sizeof(T), ptr));
     }
 
-    const int localDim()  const {return  LocalWork[0]* LocalWork[1];};
-    const int globalDim() const {return GlobalWork[0]*GlobalWork[1];};
-    const int num_groups() const {return globalDim()/localDim();};
+    int localDim()  const {return  LocalWork[0]* LocalWork[1];};
+    int globalDim() const {return GlobalWork[0]*GlobalWork[1];};
+    int num_groups() const {return globalDim()/localDim();};
 
 
     void execute(cl_event* event = NULL) {
       assert(KernelFlag);
       const cl_uint work_dim = GlobalWork.size();
+      
+      event = event; //Make compiler happy
 
 //       #define DEBUG_PRINT
       #ifdef DEBUG_PRINT
@@ -869,8 +873,8 @@ double get_time_test() {
     const cl_program&       get_program()       const {return Program;}
     const cl_context&       get_context()       const {return Context;}
     const cl_command_queue& get_command_queue() const {return CommandQueue;}
-    const int	            get_workGroupMultiple() const {return (int)WorkGroupMultiple;}
-    const int               get_workGroupMaxSize()  const {return (int)WorkGroupMaxSize;}
+    int	            get_workGroupMultiple() const {return (int)WorkGroupMultiple;}
+    int               get_workGroupMaxSize()  const {return (int)WorkGroupMaxSize;}
     
     void wait() const {clFinish(CommandQueue);}
 

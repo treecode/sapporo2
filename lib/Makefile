@@ -10,7 +10,11 @@ CUDA_TK  = /usr/local/cuda
 #OFLAGS = -O3 -g -Wall -fopenmp  -D_OCL_
 #OFLAGS = -O3 -g -Wall -fopenmp
 #OFLAGS = -g -Wall -fopenmp -D_OCL_
-OFLAGS = -g -Wall -fopenmp 
+
+#OFLAGS = -g -Wall -fopenmp  DEFAULT
+
+OFLAGS = -g -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
+
 CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include 
 
 #Below line is used when compiling for testing

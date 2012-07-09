@@ -219,6 +219,7 @@ struct Force{
   
   void initialize(int n)
   {
+    n = n;
     //Check for a config file if its there use it  
     int *devList = NULL;
     int how_many = 0;
@@ -274,6 +275,7 @@ struct Force{
   
   void no_predict_all(double time, int nj)
   {
+    time = time;
     //Set the next time
     grav.set_no_time(); 
     
@@ -381,6 +383,10 @@ struct Force{
   
  void calc_force_on_predictors_epsj(int ni, predictor pred[], Force force[], int nj)
  {
+   ni=ni;
+   pred = pred;
+   force = force;
+   nj = nj;
    //Does exactly the same as calc_force_on_predictors, except that now we use individual softening
    //namely the softening value of the J-particles
    cerr << "TODO: Not implemented yet, have to check how I do this in the compute kernels, before "; 

@@ -198,6 +198,7 @@ extern "C" {
   void g5_set_range(double xmin, double xmax, double mmin)
   {
     //Does nothing in the GPU library
+    xmin = xmin; xmax = xmax; mmin = mmin;
   }
   
   //Some non relevant functions fo the GPU

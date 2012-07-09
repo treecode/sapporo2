@@ -37,6 +37,7 @@ extern "C" {
   int g6_open_(int *id)
   {
     //Check for a config file if its there use it  
+    id = id;    //Make the compiler happy
     int *devList = NULL;
     int how_many = 0;
     FILE *fd;
@@ -68,11 +69,11 @@ extern "C" {
   }
 
 
-  int g6_close_(int *id) {  return grav.close(); }
+  int g6_close_(int *id) { id=id;  return grav.close(); }
   int g6_npipes_() { return grav.get_n_pipes(); }
   int g6_set_tunit_(double*) {return 0;}
   int g6_set_xunit_(double*) {return 0;}
-  int g6_set_ti_(int *id, double *ti) {return  grav.set_time(*ti); }
+  int g6_set_ti_(int *id, double *ti) {id=id; return  grav.set_time(*ti); }
   int g6_set_j_particle_(int *cluster_id,
 			 int *address,
 			 int *index,
@@ -82,6 +83,8 @@ extern "C" {
 			 double a2[3], double v[3], double x[3]) {
     //Grape6 is 4th order so set snp and crk to null and set individual softening
     //value to 0
+    
+    cluster_id=cluster_id; //Make compiler happy
     
     //multiply the acc and jrk by a factor 2 and 6, for GRAPE compatability    
     acc_i[0] = a2[0]*2; acc_i[1] = a2[1]*2; acc_i[2] = a2[2]*2;
@@ -97,6 +100,7 @@ extern "C" {
 			 double aold[][3], double j6old[][3],
 			 double phiold[3], 
 			 double *eps2, double h2[]) {    
+    cluster_id=cluster_id; //Make compiler happy    
     grav.startGravCalc(*nj, *ni,
 			index, xi ,vi, aold, j6old, phiold,
 			*eps2, h2, NULL);
@@ -107,7 +111,7 @@ extern "C" {
 		       double xi[][3], double vi[][3],
 		       double *eps2, double h2[],
 		       double acc[][3], double jerk[][3], double pot[]) {
-    
+    cluster_id=cluster_id; //Make compiler happy    
     return grav.getGravResults(*nj, *ni,
                                index, xi, vi, *eps2, h2,
                                acc, jerk, NULL, NULL, pot, NULL, NULL, false);
@@ -122,7 +126,7 @@ extern "C" {
 			double *eps2, double h2[],
 			double acc[][3], double jerk[][3], double pot[],
 			int *inn) {
-    
+    cluster_id=cluster_id; //Make compiler happy    
     return grav.getGravResults(*nj, *ni,
                                index, xi, vi, *eps2, h2,
                                acc, jerk, NULL, NULL, pot, inn, dsmin_i, true);    
@@ -143,7 +147,7 @@ extern "C" {
                          double &eps2,
                          int    &id) {    
 
-    
+    nj=nj; //Make compiler happy
     //Retrieve predicted properties for particle at address addr
     double idt;
     
@@ -156,10 +160,10 @@ extern "C" {
   
   
   
-  int g6_initialize_jp_buffer_(int* cluster_id, int* buf_size) {return 0;}
-  int g6_flush_jp_buffer_(int* cluster_id) {return 0;}
-  int g6_reset_(int* cluster_id) {return 0;}
-  int g6_reset_fofpga_(int* cluster_id) {return 0;}
+  int g6_initialize_jp_buffer_(int* cluster_id, int* buf_size) { cluster_id = cluster_id; buf_size=buf_size; return 0;}
+  int g6_flush_jp_buffer_(int* cluster_id) { cluster_id = cluster_id; return 0;}
+  int g6_reset_(int* cluster_id) {cluster_id = cluster_id; return 0;}
+  int g6_reset_fofpga_(int* cluster_id) {cluster_id = cluster_id; return 0;}
 
 #ifdef NGB
   int g6_read_neighbour_list_(int* cluster_id) {return grav.read_ngb_list(*cluster_id);}

@@ -10,7 +10,9 @@ CUDA_TK  = /usr/local/cuda
 #OFLAGS = -O3 -g -Wall -fopenmp  -D_OCL_
 #OFLAGS = -O3 -g -Wall -fopenmp
 #OFLAGS = -g -Wall -fopenmp
-OFLAGS = -g -Wall -fopenmp  -D_OCL_
+#OFLAGS = -g -Wall -fopenmp  -D_OCL_
+OFLAGS = -g -Wall -Wextra -Wstrict-aliasing=2 -fopenmp  -D_OCL_
+
 CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include 
 
 #Below line is when doing the block-thread size
