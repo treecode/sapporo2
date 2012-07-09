@@ -9,7 +9,6 @@ int main(int argc, char *argv[]) {
   if (argc > 1) n = atoi(argv[1]);
   cerr << " n = " << n << endl;
 
-  int nx = 1;
   int n1 = 0;
   int n2 = n;
 
@@ -21,8 +20,6 @@ int main(int argc, char *argv[]) {
   double *mass = new double[n];
   int    *nnb  = new int[n];
   double *h2  = new double[n];
-  int    *nngb  = new int[n];
-  int    *ngb_list = new int[n];
   int    *id   = new int[n];
 
   double tm = 0;
@@ -49,7 +46,6 @@ int main(int argc, char *argv[]) {
   
   sapporo grav;
   
-  int cluster_id;
 //   int sapporo::open(std::string kernelFile, int *devices, int nprocs = 1, int order = FOURTH)
 //   grav.open("CUDA/kernels4th.ptx", cluster_id, 1, 1);
   int devices[] = {0,1,2,3};
@@ -89,8 +85,6 @@ int main(int argc, char *argv[]) {
     
   
   int ipmax = grav.get_n_pipes();
-  double *i_nene = new double[ipmax];
-
 
   double null3[3] = {0,0,0};
   for (int i = 0; i < n; i++) {

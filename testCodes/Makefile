@@ -12,7 +12,7 @@ SAPLIB = lib$(SAPLIB2).a
 
 CUDA_TK  = /usr/local/cuda
 
-OFLAGS = -g -Wall -fopenmp 
+OFLAGS = -g -Wall -fopenmp -Wextra -Wstrict-aliasing=2 -fopenmp
 CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include 
 
 LDFLAGS = -lcuda -fopenmp  
