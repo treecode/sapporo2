@@ -810,27 +810,35 @@ double get_time_test() {
 
 
 
-      CUevent start,stop;
 
-      (cuEventCreate(&start, CU_EVENT_DEFAULT));
-      (cuEventCreate(&stop, CU_EVENT_DEFAULT));
-      (cuEventRecord(start, 0));
+//       #define DEBUG_PRINT
+      #ifdef DEBUG_PRINT
+        CUevent start,stop;
+
+        (cuEventCreate(&start, CU_EVENT_DEFAULT));
+        (cuEventCreate(&stop, CU_EVENT_DEFAULT));
+        (cuEventRecord(start, 0));      
+        fprintf(stderr, "Starting kernel: %s and waiting to finish...", KernelName);
+      #endif
 
       cuSafeCall(cuLaunchGridAsync  (Kernel, GlobalWork[0], GlobalWork[1], 0));
-
-      (cuEventRecord(stop, 0));
-      (cuEventSynchronize(stop));
-      float time;
-      (cuEventElapsedTime(&time, start, stop));
-      (cuEventDestroy(start));
-      (cuEventDestroy(stop));
+      
+      #ifdef DEBUG_PRINT
+        double t0 = get_time_test();
+        cuSafeCall(cuCtxSynchronize());
+        double execTime = ((get_time_test()-t0));      
+        (cuEventRecord(stop, 0));
+        (cuEventSynchronize(stop));
+        float time;
+        (cuEventElapsedTime(&time, start, stop));
+        (cuEventDestroy(start));
+        (cuEventDestroy(stop));
+        fprintf(stderr, "Complete, took: %lg \t%f \n", execTime, time);
+      #endif
 
 //      fprintf(stderr,"%s took:\t%f\t millisecond\n", KernelName,time);
-      //#define DEBUG_PRINT
 
-      #ifdef DEBUG_PRINT
-        fprintf(stderr, "Waiting on kernel: %s to finish...", KernelName);
-      #endif
+
 
 //      double t0 = get_time_test();
 //      cuSafeCall(cuCtxSynchronize());
@@ -844,9 +852,6 @@ double get_time_test() {
 
 //      cuSafeCall(cuCtxSynchronize());
 
-      #ifdef DEBUG_PRINT
-        fprintf(stderr,"finished\n");
-      #endif
 
 
     }

@@ -799,8 +799,8 @@ double get_time_test() {
       assert(KernelFlag);
       const cl_uint work_dim = GlobalWork.size();
 
-       //fprintf(stderr,"Executing on command queue: %d  Kernel: %s\n", CommandQueue, KernelName);
-//       fprintf(stderr,"Executing on command queue: Kernel: %s\n", KernelName);
+//       #define DEBUG_PRINT
+      #ifdef DEBUG_PRINT
 
   //     double t0 = get_time_test();
       cl_event ndrEvent;
@@ -822,6 +822,14 @@ double get_time_test() {
      //fprintf(stderr,"Executing on command queue: Kernel: %s\t Took: %d\n", KernelName, execTime);
      fprintf(stderr,"Executing on command queue: Kernel: %s\t Took: %d  Threads: %d %d\n", 
 		     KernelName, (int)execTime, (int)LocalWork[0], (int)LocalWork[1]);
+     
+    #else
+      oclSafeCallKernel(clEnqueueNDRangeKernel(CommandQueue, Kernel, work_dim, 0,
+                        &GlobalWork[0],
+                        &LocalWork[0],
+                        0, NULL, NULL), KernelName);
+     
+    #endif
 
      
 //    fprintf(stderr, "Kernel: %s   TOOK: %lg\tNTHREAD: %d\tNPIPES: %d\tNMULTI: %d \n", KernelName,  get_time_test() - t0, NTHREADS, NPIPES, NBLOCKS_PER_MULTI);          

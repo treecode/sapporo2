@@ -495,9 +495,7 @@ extern "C" __global__ void dev_predictor(int nj,
     pos.y  += vel.y * dt + acc.y * dt2 + jrk.y * dt3;
     pos.z  += vel.z * dt + acc.z * dt2 + jrk.z * dt3;
 
-    //vel.x += acc.x * dt + jrk.x * dt2;
-    //vel.y += acc.y * dt + jrk.y * dt2;
-    //vel.z += acc.z * dt + jrk.z * dt2;
+
     dt2 = dt*(1.0/2.0);
 
 
@@ -507,8 +505,7 @@ extern "C" __global__ void dev_predictor(int nj,
 
 
     Ppos_j[index] = pos;
-//     Ppos_j[index].x = to_double(pos.x); Ppos_j[index].y = to_double(pos.y);
-//     Ppos_j[index].z = to_double(pos.z); Ppos_j[index].w = to_double(pos.w);            
+         
 
     Pvel_j[index] = (double4){vel.x, vel.y, vel.z, vel.w};
   }

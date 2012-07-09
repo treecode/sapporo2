@@ -72,6 +72,7 @@ int sapporo::open(std::string kernelFile, int *devices,
   integrationPrecision  = precision;
 
   cout << "Integration order used: " << integrationOrder << " (0=GRAPE5, 1=4th, 2=6th, 3=8th)\n";
+  cout << "Integration precision used: " << precision << " (0=DEFAULT, 1=DOUBLE)\n";
 
   dev::context        contextTest;  //Only used to retrieve the number of devices
 
@@ -1382,11 +1383,24 @@ double sapporo::evaluate_gravity(int ni, int nj)
 //   shared_mem_size = p*q*(sizeof(double4) + sizeof(double4) + sizeof(double4) + sizeof(int)*2 + sizeof(double));
   
   
-  int sharedMemSizeEval;
-  int sharedMemSizeReduce;
+  int sharedMemSizeEval = 0;
+  int sharedMemSizeReduce = 0;
   
   if(integrationOrder == GRAPE5)
   {
+    if(integrationPrecision == DEFAULT)
+    {
+      //Single Precision
+      sharedMemSizeEval    = p*q*(sizeof(float4)); //G5 Single precision
+      sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(sizeof(float4)); //G5 Single precision
+    }
+    if(integrationPrecision == DOUBLE)
+    {
+      //Double Single Precision
+      //Single Precision
+      sharedMemSizeEval    = p*q*(sizeof(DS4)); //G5 Single precision
+      sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(sizeof(float4)); //G5 Single precision            
+    }    
     
   }
   if(integrationOrder == FOURTH)
@@ -1411,12 +1425,10 @@ double sapporo::evaluate_gravity(int ni, int nj)
 //   fprintf(stderr, "Shared mem size: %d  ds4: %d f4: %d p: %d q: %d\n", shared_mem_size, sizeof(DS4), sizeof(float4), p,q);
 //   exit(0);
 
-//  #ifdef DEBUG_PRINT
-#if 0
-   fprintf(stderr, "EvalGrav config: p: %d q: %d  nj: %d nj_scaled: %d thisblockscaled: %d nthreads: %d ni: %d EPS: %f\n",
-           p,q,nj, nj_scaled, thisBlockScaled, nthreads, ni, EPS2);
+  #ifdef DEBUG_PRINT
+    fprintf(stderr, "EvalGrav config: p: %d q: %d  nj: %d nj_scaled: %d thisblockscaled: %d nthreads: %d ni: %d EPS: %f\n",
+                    p,q,nj, nj_scaled, thisBlockScaled, nthreads, ni, EPS2);
   #endif
-
 
 
   sapdevice->evalgravKernel.set_arg<int  >(0, &nj);      //Total number of j particles
@@ -1424,16 +1436,20 @@ double sapporo::evaluate_gravity(int ni, int nj)
   sapdevice->evalgravKernel.set_arg<int  >(2, &nthreads);
 
   if(integrationOrder == GRAPE5)
-    sapdevice->evalgravKernel.set_arg<void*>(3, sapdevice->pos_j.ptr());
-  else
-    sapdevice->evalgravKernel.set_arg<void*>(3, sapdevice->pPos_j.ptr());
-
-  sapdevice->evalgravKernel.set_arg<void*>(4, sapdevice->pos_i.ptr());
-  sapdevice->evalgravKernel.set_arg<void*>(5, sapdevice->accin_i.ptr());
-  sapdevice->evalgravKernel.set_arg<double>(6, &EPS2);
-
-  if(integrationOrder > GRAPE5)
   {
+    sapdevice->evalgravKernel.set_arg<void*>(3, sapdevice->pos_j.ptr());
+    sapdevice->evalgravKernel.set_arg<void*>(4, sapdevice->pos_i.ptr());
+    sapdevice->evalgravKernel.set_arg<void*>(5, sapdevice->accin_i.ptr());
+    sapdevice->evalgravKernel.set_arg<double>(6, &EPS2);
+    sapdevice->evalgravKernel.set_arg<int>(7, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
+  }
+  else
+  {
+    sapdevice->evalgravKernel.set_arg<void*>(3, sapdevice->pPos_j.ptr());
+    sapdevice->evalgravKernel.set_arg<void*>(4, sapdevice->pos_i.ptr());
+    sapdevice->evalgravKernel.set_arg<void*>(5, sapdevice->accin_i.ptr());
+    sapdevice->evalgravKernel.set_arg<double>(6, &EPS2);
+
     sapdevice->evalgravKernel.set_arg<void*>(7,  sapdevice->pVel_j.ptr());
     sapdevice->evalgravKernel.set_arg<void*>(8,  sapdevice->id_j.ptr());
     sapdevice->evalgravKernel.set_arg<void*>(9,  sapdevice->vel_i.ptr());
@@ -1507,6 +1523,10 @@ double sapporo::evaluate_gravity(int ni, int nj)
   int tempNGBOffset = NGB_PB*(sapdevice->get_NBLOCKS())*NTHREADS;
 
   sapdevice->reduceForces.set_arg<void*>(0, sapdevice->accin_i.ptr());
+  if(integrationOrder == GRAPE5)
+  {
+    sapdevice->reduceForces.set_arg<int>(1, NULL, (sharedMemSizeReduce)/sizeof(int));  //Shared memory
+  }
   if(integrationOrder > GRAPE5)
   {
     sapdevice->reduceForces.set_arg<void*>(1, sapdevice->jrk_i.ptr());
