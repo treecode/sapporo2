@@ -6,7 +6,7 @@
  *                         
  * (c) 2010                 
  *
- * TODO License
+ * T
  *
  ********************************/
 
@@ -155,10 +155,9 @@ protected:
   int integrationOrder;         //Order of the integrator we use, should be set during open call, default is fourth order
   int integrationPrecision;     //The precision of the integrator for shared-memory calculation. Default is DEFAULT
   
-//TODO ask EG why we increase the i particles 
+
 public:
   sapporo() {
-//     n_pipes = NTHREADS;
     n_pipes = NPIPES;
     pos_i.resize(n_pipes);
     vel_i.resize(n_pipes);
@@ -195,7 +194,6 @@ public:
   void send_i_particles_to_device(int i);
     
   //Library interface functions
-//   int open(std::string kernelFile, int *devices, int nprocs, int order, int precision);
   int open(std::string kernelFile, int *devices, int nprocs = 1, 
            int order = FOURTH, int precision = DEFAULT);
   int close();
@@ -218,20 +216,7 @@ public:
                      double phiold[3], 
                      double eps2, double h2[],
                      double eps2_i[]);
-  /*int calc_lasthalf(int cluster_id,
-                    int nj, int ni,
-                    int index[], 
-                    double xi[][3], double vi[][3],
-                    double eps2, double h2[],
-                    double acc[][3], double jerk[][3], double pot[]);
-  int calc_lasthalf2(int cluster_id,
-                     int nj, int ni,
-                     int index[], 
-                     double xi[][3], double vi[][3],
-                     double eps2, double h2[],
-                     double acc[][3], double jerk[][3], double pot[],
-                     int nnbindex[]);*/
-                     
+
   int getGravResults(int nj, int ni,
                      int index[], 
                      double xi[][3],      double vi[][3],
@@ -241,25 +226,25 @@ public:
                      double pot[],        int nnbindex[],
                      double dsmin_i[],    bool ngb);
                      
-  void forcePrediction(int nj);            
-  void retrieve_predicted_j_particle(int addr,       double &mass, 
-                                     double &id,     double &eps2,
-                                     double pos[3],  double vel[3],
-                                     double acc[3]);
-                                     
-  void retrieve_j_particle_state(int addr,       double &mass, 
-                                 double &id,     double &eps2,
-                                 double pos[3],  double vel[3],
-                                 double acc[3],  double jrk[3], double ppos[3],
-                                 double pvel[3], double pacc[3]);
-  
-  int fetch_ngb_list_from_device(int);
-  int read_ngb_list(int);
-  int get_ngb_list(int cluster_id,
-                   int ipipe,
-                   int maxlength,
-                   int &nblen,
-                   int nbl[]);
+    void forcePrediction(int nj);            
+    void retrieve_predicted_j_particle(int addr,       double &mass, 
+                                      double &id,     double &eps2,
+                                      double pos[3],  double vel[3],
+                                      double acc[3]);
+                                      
+    void retrieve_j_particle_state(int addr,       double &mass, 
+                                  double &id,     double &eps2,
+                                  double pos[3],  double vel[3],
+                                  double acc[3],  double jrk[3], double ppos[3],
+                                  double pvel[3], double pacc[3]);
+    
+    int fetch_ngb_list_from_device(int);
+    int read_ngb_list(int);
+    int get_ngb_list(int cluster_id,
+                    int ipipe,
+                    int maxlength,
+                    int &nblen,
+                    int nbl[]);
 };
 
 #endif 

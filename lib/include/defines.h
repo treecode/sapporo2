@@ -6,8 +6,6 @@
 // #define DEBUG_PRINT
 // #define REMAP
 
-
-
 //GPU configuration settings
 
 //Neighbour information
@@ -15,18 +13,24 @@
 #define NGB_PB 256
 #define NGB
 
-//GPU config configuration
-//GPU config configuration
+//The next line will enable some extra hand tuned block-size
+//optimizations. But this can be device/resource dependend and 
+//should only be used if you know that it will work 
+//(test if needed to find out if it works)
+#define ENABLE_THREAD_BLOCK_SIZE_OPTIMIZATION
 
+
+
+//GPU config configuration
 #ifndef NBLOCKS_PER_MULTI
 
 //Put this in this file since it is a setting
 inline int getBlocksPerSM(int devMajor, int devMinor, std::string deviceName)
 {
+  devMinor = devMinor; //Prevent unused warnings
+  
   switch(devMajor)
-  {
-    devMinor = devMinor; //Prevent unused warnings
-    
+  { 
     case -1:
       //Non nvidia
       if(deviceName.find("Tahiti") != std::string::npos)

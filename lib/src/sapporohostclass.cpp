@@ -117,7 +117,7 @@ int sapporo::open(std::string kernelFile, int *devices,
     }
     if(nprocs > 0)
     {
-      //The user gave up a set of device ids
+      //The user gave us a set of device ids
       dev = devices[tid];
     }
 
@@ -897,7 +897,6 @@ void sapporo::send_j_particles_to_device(int nj_tosend)
   //This function is called inside an omp parallel section
 
   //Copy the particles to the device memory
-  //Copy :-)
   assert(nj_tosend == jMemAddresses[omp_get_thread_num()].count);
 
   sapdevice->pos_j_temp.h2d(nj_tosend);
@@ -1093,7 +1092,6 @@ void sapporo::retrieve_j_particle_state(int addr,       double &mass,
     #pragma omp parallel
     {
       //Retrieve data from the devices (in parallel)
-
       sapdevice->pos_j.d2h();
 
 
@@ -1164,10 +1162,8 @@ void sapporo::retrieve_j_particle_state(int addr,       double &mass,
         pacc[1] = sapdevice->pAcc_j[devAddr].y;
         pacc[2] = sapdevice->pAcc_j[devAddr].z;
       }
-
-
-    }
-  }
+    } //omp_get_thread_num() == dev
+  } // pragma omp parallel
 
 
   //Indicate that we copied the predicted-j particles back to the host
@@ -1175,12 +1171,12 @@ void sapporo::retrieve_j_particle_state(int addr,       double &mass,
 
   #ifdef DEBUG_PRINT
 //     cerr << "retrieve_predicted_j_particle res, from devAddr: " << addr / nCUDAdevices << endl;
-//     fprintf(stderr, "GetjState %d\t%lf\tpos: %g %g %g\tvel: %g %g %g\tacc: %g %g %g\n",
-//             addr,
-//             id,
-//             pos[0],pos[1],pos[2],
-//             vel[0],vel[1],vel[2],
-//             acc[0],acc[1],acc[2]);
+    fprintf(stderr, "GetjState %d\t%lf\tpos: %g %g %g\tvel: %g %g %g\tacc: %g %g %g\n",
+            addr,
+            id,
+            pos[0],pos[1],pos[2],
+            vel[0],vel[1],vel[2],
+            acc[0],acc[1],acc[2]);
   #endif
 
 }
@@ -1209,16 +1205,17 @@ void sapporo::forcePrediction(int nj)
     initialize_firstsend();
   }
 
-   #pragma omp parallel
+  #pragma omp parallel
   {
-    if (nj_updated) {
+    if (nj_updated)
+    {
       //Get the number of particles set for this device
       int particleOnDev = jMemAddresses[omp_get_thread_num()].count;
       if(particleOnDev > 0)
       {
         send_j_particles_to_device(particleOnDev);
       }
-    }
+    } //nj_updated
 
     //Calculate the number of nj particles that are used per device
     int thisDevNj;
@@ -1243,11 +1240,10 @@ void sapporo::forcePrediction(int nj)
 }
 
 /*
-
-Start kernel functions
-
-
-
+*
+* Functions to start the GPU Kernels
+* Functions; Reorder particles on the device, predict, evaluate
+*
 */
 
 void sapporo::copyJInDev(int nj)
@@ -1265,7 +1261,6 @@ void sapporo::copyJInDev(int nj)
     //Set arguments
     int njToCopy = jMemAddresses[omp_get_thread_num()].toCopy;
     jMemAddresses[omp_get_thread_num()].toCopy = 0;
-
 
     sapdevice->copyJParticles.set_arg<int  >(0, &njToCopy);
     sapdevice->copyJParticles.set_arg<int  >(1, &sapdevice->nj_local);
@@ -1299,10 +1294,9 @@ void sapporo::copyJInDev(int nj)
       sapdevice->copyJParticles.set_arg<void*>(21, sapdevice->crk_j_temp.ptr());
     }
 
-    //Set ition config and execute
+    //Set execution configuration and start the kernel
     sapdevice->copyJParticles.setWork_2D(128, njToCopy);
     sapdevice->copyJParticles.execute();
-
   }
 }
 
@@ -1313,7 +1307,8 @@ void sapporo::predictJParticles(int nj)
   if(integrationOrder == GRAPE5)
     return; //GRAPE 5 has no prediction
 
-  //if predict call predict Kernel
+  //if we have to predict call predict Kernel, we do not have to predict if we 
+  //already had a gravity evaluation call before that called the predict kernel
   if(predict)
   {
     //Set arguments
@@ -1343,14 +1338,12 @@ void sapporo::predictJParticles(int nj)
 
 double sapporo::evaluate_gravity(int ni, int nj)
 {
+  //This function is called inside an omp parallel section  
   #ifdef DEBUG_PRINT
     cerr << "evaluate_gravity ni: " << ni << "\tnj: " << nj << endl;
   #endif
 
-
-  //This function is called inside an omp parallel section
-
-  //ni is the number of i-particles that is set and is to be integrated
+  //ni is the number of i-particles that is set and for which we compute the force
   //nj is the current number of j-particles that are used as sources
 
   //If there are particles updated, put them in the correct locations
@@ -1360,72 +1353,45 @@ double sapporo::evaluate_gravity(int ni, int nj)
   //Execute prediction if necessary
   predictJParticles(nj);
 
-  //Kernel gravity
+  //Setting the properties for the gravity kernel
 
-  //Calculate the number of blocks, groups, etc
-  //For efficiency we always launch a multiple
-  //number of blocks of the warpsize/wavefront size
+  //Calculate the number of blocks, groups, etc. For efficiency we always 
+  //launch a multiple number of blocks of the warpsize/wavefront size
   int multipleSize = 1;
   
   if(integrationOrder <= FOURTH)
   {
+    //This is only possible for 4th order, the 6th order requires too many 
+    //resources to launch big thread-blocks. The get_workGroupMultiple 
+    //retrieves the warp/wavefront size
     if(ni > 128)
       multipleSize = sapdevice->evalgravKernel.get_workGroupMultiple();
     else if(ni > 96)
       multipleSize =  sapdevice->evalgravKernel.get_workGroupMultiple() / 2;
   }
   
+  //Force ni to be a multiple of the warp/wavefront size. Note we can let ni be a multiple
+  //since we ignore all results of non-used (non-requested) particles
   int temp = ni / multipleSize; 
   if((ni % multipleSize) != 0 ) temp++;
-  
-  //if(ni > 128)
+ 
   ni = temp * multipleSize;
   
-  
-  
 
-  //Dimensions of one thread-block
+  //Dimensions of one thread-block, this can be of the 2D form if there are multiple 
+  //y dimensions (q) with an x-dimension of p.
   int p = ni;
   int q = min(NTHREADS/ni, 32);
-//  int q = min(NTHREADS/ni, 32);
-//
-  //Multiple blocks if it fits
-  //if(ni <= 256) 	q = min(sapdevice->evalgravKernel.get_workGroupMaxSize()/ni, 32);
   
-//NOTE This does not work with double precision kernels, unless we 
-//specify the shared-memory INSIDE the kernel files
+  //The above is the default and works all the time, we can do some extra device/algorithm
+  //specific tunings using the code below.
   
-//This is most optimal one  
-//  if(ni <= 256 && ni >= 32) 	
-//  	q = min(sapdevice->evalgravKernel.get_workGroupMaxSize()/ni, 32);
 
-
-
-
-
-  //q = 1; //Use thsi when testing optimal thread/block/multi size
-
-//  ni = temp * multipleSize;
-//  p = ni;
-//  fprintf(stderr,"Test: ni %d  q %d mul %d tmp %d p %d max %d \n",
-//		  ni, q, multipleSize, temp, p, sapdevice->evalgravKernel.get_workGroupMaxSize());
-//  q = 1;
-
-  //TODO make the shared mem size depending on which kernel we use
-//   int shared_mem_size = p*q*(sizeof(DS4) + sizeof(float4)); //4th order Double Single
-  int nj_scaled       = n_norm(nj, q*(sapdevice->get_NBLOCKS()));
-  int thisBlockScaled = nj_scaled/((sapdevice->get_NBLOCKS())*q);
-  int nthreads        = NTHREADS;
-
-  //int nj_scaled       = n_norm(nj, q*(4));
-//  int thisBlockScaled = nj_scaled/((4)*q);
-  //Double precision! 4th
-//   shared_mem_size = p*q*(sizeof(double4) + sizeof(double4) + sizeof(int)*2 + sizeof(double));
-  //Sixth order
-//   shared_mem_size = p*q*(sizeof(double4) + sizeof(double4) + sizeof(double4) + sizeof(int)*2 + sizeof(double));
+  //Set the amount of shared-memory and possibly improve the 2D block sizes 
+  //by using specific optimizations. 
+  //NOTE this is also device/resource dependend and can cause 'out of resource' crashes!!
   
-  
-  int sharedMemSizeEval = 0;
+  int sharedMemSizeEval   = 0;
   int sharedMemSizeReduce = 0;
   
   if(integrationOrder == GRAPE5)
@@ -1438,10 +1404,9 @@ double sapporo::evaluate_gravity(int ni, int nj)
     }
     if(integrationPrecision == DOUBLE)
     {
-      //Double Single Precision
-      //Single Precision
-      sharedMemSizeEval    = p*q*(sizeof(DS4)); //G5 Single precision
-      sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(sizeof(float4)); //G5 Single precision            
+      //Double Single Precision      
+      sharedMemSizeEval    = p*q*(sizeof(DS4)); //G5 DS precision
+      sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(sizeof(float4)); //G5 DS precision (acc is SP)            
     }    
     
   }
@@ -1450,7 +1415,14 @@ double sapporo::evaluate_gravity(int ni, int nj)
     if(integrationPrecision == DEFAULT)
     {
       sharedMemSizeEval    = p*q*(sizeof(DS4) + sizeof(float4)); //4th order Double Single
-      sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(2*sizeof(float4) + 3*sizeof(int)); //4th DS     
+      sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(2*sizeof(float4) + 3*sizeof(int)); //4th DS  
+      
+      #ifdef ENABLE_THREAD_BLOCK_SIZE_OPTIMIZATION
+        //This is most optimal one for Fourth order Double-Single. 
+        if(ni <= 256 && ni >= 32)   
+          q = min(sapdevice->evalgravKernel.get_workGroupMaxSize()/ni, 32);      
+      #endif
+      
     }
     if(integrationPrecision == DOUBLE)
     {
@@ -1460,16 +1432,25 @@ double sapporo::evaluate_gravity(int ni, int nj)
   }
   if(integrationOrder == SIXTH)
   {
+    //Only has a double precision version
     sharedMemSizeEval =   p*q*(sizeof(double4) + sizeof(double4) + sizeof(double4) + sizeof(int)*2 + sizeof(double));
     sharedMemSizeReduce = sapdevice->get_NBLOCKS()*(3*sizeof(double4) + 2*sizeof(int) + sizeof(double));   //6th order
   }
+  
+  //q = 1; //Use this when testing optimal thread/block/multi size. Disables 2D thread-blocks  
+    
+  //Compute the number of nj particles used per-block (note can have multiple blocks per thread-block in 2D case)
+  int nj_scaled       = n_norm(nj, q*(sapdevice->get_NBLOCKS()));
+  int thisBlockScaled = nj_scaled/((sapdevice->get_NBLOCKS())*q);
+  int nthreads        = NTHREADS;
+  
 
-//   fprintf(stderr, "Shared mem size: %d  ds4: %d f4: %d p: %d q: %d\n", shared_mem_size, sizeof(DS4), sizeof(float4), p,q);
-//   exit(0);
 
   #ifdef DEBUG_PRINT
-    fprintf(stderr, "EvalGrav config: p: %d q: %d  nj: %d nj_scaled: %d thisblockscaled: %d nthreads: %d ni: %d EPS: %f\n",
+    fprintf(stderr, "EvalGrav config: p: %d q: %d  nj: %d nj_scaled: %d thisblockscaled: %d nthreads: %d ni: %d EPS: %f \n",
                     p,q,nj, nj_scaled, thisBlockScaled, nthreads, ni, EPS2);
+    fprintf(stderr, "Shared memory configuration, size eval: %d  \t size reduc: %d \n",
+                    sharedMemSizeEval, sharedMemSizeReduce);    
   #endif
 
 
@@ -1509,54 +1490,13 @@ double sapporo::evaluate_gravity(int ni, int nj)
     sapdevice->evalgravKernel.set_arg<int>(15, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
   }
 
-//   sapdevice->evalgravKernel.setWork(p, NBLOCKS, q, 1);  //dim3 threads(p, q, 1); dim3 grid(NBLOCKS, 1, 1);
-//    sapdevice->evalgravKernel.setWork_threadblock2D(p, q, NBLOCKS, 1);
-
-//  sapdevice->evalgravKernel.setWork_threadblock2D(64, q, (sapdevice->get_NBLOCKS()), 1);
   sapdevice->evalgravKernel.setWork_threadblock2D(p, q, (sapdevice->get_NBLOCKS()), 1); //Default
- //sapdevice->evalgravKernel.setWork_threadblock2D(p, q, 512, 1);  //Test
-  
   
   sapdevice->evalgravKernel.execute();
-
-#if 0
-  sapdevice->accin_i.d2h();
-  for(int i=0; i < 256; i++)
-  {
-	fprintf(stderr, "%d\t %f %f %f %f\t Ds2: X i Pos: %f %f %f %f\n", i, sapdevice->accin_i[i].x, sapdevice->accin_i[i].y,
-	      sapdevice->accin_i[i].z, sapdevice->accin_i[i].w, sapdevice->pos_i[i].x, sapdevice->pos_i[i].y, sapdevice->pos_i[i].z, sapdevice->pos_i[i].w );
-
-  }
-
-  for(int i=256-10; i < 256; i++)
-  {
-	fprintf(stderr, "%d\t %f %f %f \t Ds2: %f i Pos: %f %f %f %f\n", i, sapdevice->accin_i[i].x, sapdevice->accin_i[i].y,
-	      sapdevice->accin_i[i].z, sapdevice->accin_i[i].w, sapdevice->pos_i[i].x, sapdevice->pos_i[i].y, sapdevice->pos_i[i].z, sapdevice->pos_i[i].w );
-
-  }
-
-  for(int i=0; i < 10; i++)
-  {
-	fprintf(stderr, "%d\t Pos: %f %f %f %f\n", i, jMemAddresses[0].pos_j[i].x, jMemAddresses[0].pos_j[i].y, jMemAddresses[0].pos_j[i].z, jMemAddresses[0].pos_j[i].w);
-
-  }
-
-  for(int i=1024-10; i < 1024; i++)
-  {
-	fprintf(stderr, "%d\t Pos: %f %f %f %f\n", i, jMemAddresses[0].pos_j[i].x, jMemAddresses[0].pos_j[i].y, jMemAddresses[0].pos_j[i].z, jMemAddresses[0].pos_j[i].w);
-
-  }
-  fprintf(stderr,"TODO clean this %s  %d \n", __FILE__, __LINE__);
-  exit(0);
-
-#endif
 
   //Kernel reduce
   nthreads        = (sapdevice->get_NBLOCKS());
   int nblocks     = ni;
-//   shared_mem_size = (sapdevice->get_NBLOCKS())*(2*sizeof(float4) + 3*sizeof(int)); //4th DS
-//   shared_mem_size = sapdevice->get_NBLOCKS()*(2*sizeof(double4) + 2*sizeof(int) + sizeof(double));   //4th DP
-//   shared_mem_size = sapdevice->get_NBLOCKS()*(3*sizeof(double4) + 2*sizeof(int) + sizeof(double));   //6th order
 
   sapdevice->reduceForces.setWork_threadblock2D(nthreads, 1, nblocks, 1);
 
@@ -1587,7 +1527,6 @@ double sapporo::evaluate_gravity(int ni, int nj)
     sapdevice->reduceForces.set_arg<int>(8, NULL, (sharedMemSizeReduce)/sizeof(int));  //Shared memory
   }
 
-//   sapdevice->reduceForces.printWorkSize();
   sapdevice->reduceForces.execute();
 
   return 0.0;

@@ -2,8 +2,6 @@
 Licence
 
 
-
-
 v1: 19-aug-2010
 
 Class that holds the sapporo device-structure which contains 
@@ -13,24 +11,23 @@ to allocate, load, start functions, etc.
 
 */
 
-// #define _OCL_
 
 enum { GRAPE5   = 0, FOURTH, SIXTH, EIGHT};        //0, 1, 2, 3
 enum { DEFAULT  = 0, DOUBLE}; //defualt is 0, double precision 1
 
 #ifdef _OCL_
-#include "include/ocldev.h"
+  #include "include/ocldev.h"
 
-typedef cl_float2 float2;
-typedef cl_float4 float4;
+  typedef cl_float2 float2;
+  typedef cl_float4 float4;
 
-typedef cl_double4 double4;
-typedef cl_double2 double2;
+  typedef cl_double4 double4;
+  typedef cl_double2 double2;
 
-typedef cl_int4 int4;
+  typedef cl_int4 int4;
 
 #else
-#include "include/cudadev.h"
+  #include "include/cudadev.h"
 #endif
 
 #include <cassert>
@@ -52,9 +49,8 @@ namespace sapporo2 {
       //Context related
       dev::context    context;
       
-      //Number of multiprocessors
-      int nMulti;
-      
+      //Number of multiprocessors and number of blocks per SM
+      int nMulti;      
       int NBLOCKS;
       
     public:      
@@ -64,15 +60,14 @@ namespace sapporo2 {
       dev::kernel     evalgravKernel;
       dev::kernel     reduceForces;
       
-      dev::kernel     evalgravKernel_new;
 
       //Memory
-      //j-particles
+      //j-particles, buffers used in computations
       dev::memory<double4> pPos_j;       //Predicted position       
       dev::memory<double4> pVel_j;       //Predicted velocity
       dev::memory<double4> pAcc_j;       //Predicted acceleration, for 6thand 8th order
       
-      dev::memory<int>    address_j;    //Address
+      dev::memory<int>    address_j;     //Address
       dev::memory<double2> t_j;          //Times
       dev::memory<double4> pos_j;        //position       
       dev::memory<double4> vel_j;        //velocity
@@ -80,22 +75,24 @@ namespace sapporo2 {
       dev::memory<double4> jrk_j;        //jerk      
       dev::memory<double4> snp_j;        //Snap for 6th and 8th order
       dev::memory<double4> crk_j;        //Crack for 6th and 8th order
-      dev::memory<int>     id_j;        //Particle ID
+      dev::memory<int>     id_j;         //Particle ID
       
+      //Data is copied from the temp buffers to buffers used in the computations
+      //the set of buffers defined here above)
       dev::memory<double2> t_j_temp;          //Temp Times
-      dev::memory<double4> pos_j_temp;        //temp pos_j
-      dev::memory<double4> acc_j_temp;        //
-      dev::memory<double4> vel_j_temp;        //
-      dev::memory<double4> jrk_j_temp;        //      
-      dev::memory<double4> snp_j_temp;        //Snap for 6th and 8th order
-      dev::memory<double4> crk_j_temp;        //Crack for 6th and 8th order
-      dev::memory<int>     id_j_temp;
+      dev::memory<double4> pos_j_temp;        //Temp position-j
+      dev::memory<double4> acc_j_temp;        //Temp acceleration-j
+      dev::memory<double4> vel_j_temp;        //Temp velocity-j
+      dev::memory<double4> jrk_j_temp;        //Temp Jerk-j      
+      dev::memory<double4> snp_j_temp;        //Temp Snap for 6th and 8th order
+      dev::memory<double4> crk_j_temp;        //Temp Crack for 6th and 8th order
+      dev::memory<int>     id_j_temp;         //Temp id-j
       
-      //i-particles
+      //i-particle buffers
       //in variables
       dev::memory<double4> pos_i;        //position       
       dev::memory<double4> vel_i;        //velocity
-      dev::memory<double4> accin_i;        //acceleration for 6th and 8th order
+      dev::memory<double4> accin_i;      //acceleration for 6th and 8th order
       
       //out variables
       dev::memory<double4> acc_i;        //acceleration
@@ -107,10 +104,10 @@ namespace sapporo2 {
       
       dev::memory<int>   ngb_list_i;  //neighbour list
       
-      int dev_ni;
+      int dev_ni;                       //Number of ni particles on the device
       int nj_local;                     //Number of particles on this device
       
-      int integrationOrder;
+      int integrationOrder;             //Which integration algorithm do we use. Needed for shmem config
 
     public:
       //Functions
@@ -123,6 +120,8 @@ namespace sapporo2 {
       //Assign a device and start the context
       int assignDevice(int devID, int order = 0)
       {
+        integrationOrder = order;
+        
         #ifdef __OPENCL_DEV__
 //           const int numPlatform = context.getPlatformInfo();
           context.getDeviceCount(CL_DEVICE_TYPE_GPU, 0);
@@ -131,15 +130,13 @@ namespace sapporo2 {
         #endif
         context.createQueue(devID);    
         
-        nMulti = context.get_numberOfMultiProcessors();
+        //Get the number of multi-processors on the device
+        nMulti = context.get_numberOfMultiProcessors(); 
         
-        integrationOrder = order;
-        
-        //Get number of blocks per multiprocessor
-        int blocksPerMulti = 2;
-        blocksPerMulti = getBlocksPerSM(context.getComputeCapabilityMajor(),
-                                        context.getComputeCapabilityMinor(),
-                                        context.getDeviceName());
+        //Get number of blocks per multiprocessor and compute total number of thread-blocks to use
+        int blocksPerMulti = getBlocksPerSM(context.getComputeCapabilityMajor(),
+                                            context.getComputeCapabilityMinor(),
+                                            context.getDeviceName());
         
         NBLOCKS = nMulti*blocksPerMulti;
         cerr << "Using  " << blocksPerMulti << " blocks per multi-processor for a total of : " << NBLOCKS << std::endl;
@@ -150,44 +147,25 @@ namespace sapporo2 {
       //Load the kernels
       int loadComputeKernels(const char *filename)
      {
-        //Assign context
+        //Assign context and load the source file
         copyJParticles.setContext(context);
         predictKernel.setContext(context);
         evalgravKernel.setContext(context);
         reduceForces.setContext(context);
-        evalgravKernel_new.setContext(context);
- 
-        //#ifdef __OPENCL_DEV__      
-        #if 0
-           copyJParticles.load_source("OpenCL/testkernel.cl", "");
-           predictKernel.load_source("OpenCL/testkernel.cl", "");
-           evalgravKernel.load_source("OpenCL/testkernel.cl", "");
-           reduceForces.load_source("OpenCL/testkernel.cl", "");
-           evalgravKernel_new.load_source("OpenCL/testkernel.cl", "");
-        #else
-
-	
 	  
-          copyJParticles.load_source(filename, "");
-          predictKernel.load_source(filename, "");
-          evalgravKernel.load_source(filename, "");
-          reduceForces.load_source(filename, "");
-          evalgravKernel_new.load_source(filename, "");    
+        copyJParticles.load_source(filename, "");
+        predictKernel.load_source(filename, "");
+        evalgravKernel.load_source(filename, "");
+        reduceForces.load_source(filename, "");
 	  
-
-        #endif
-  
         cerr << "Kernel files found .. building compute kernels! \n";
   
         copyJParticles.create("dev_copy_particles");
         predictKernel.create("dev_predictor");
         evalgravKernel.create("dev_evaluate_gravity");
-//         evalgravKernel.create("dev_evaluate_gravity_nongb");
         reduceForces.create("dev_reduce_forces");
         
-//         evalgravKernel_new.create("dev_evaluate_gravity_new");
-//         evalgravKernel_new.create("dev_evaluate_gravity_new_nongb");
-        
+       
         return 0;
       }
       

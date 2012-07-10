@@ -173,7 +173,8 @@ __inline void body_body_interaction(
                                     const float4  vel_i,
                                     const DS4     pos_j, 
                                     const float4  vel_j,
-                                    const float  EPS2,
+                                    //const float  EPS2,
+                                    float  EPS2,
                                     const int iID
                                     ) {
 
@@ -183,7 +184,6 @@ __inline void body_body_interaction(
     const int jID   = as_int(pos_j.w.y);
   #endif
 //   if((jID == iID)) return;
-
 
   if (iID != jID)    /* assuming we always need ngb */
   {
