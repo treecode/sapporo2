@@ -1,0 +1,35 @@
+This describes the format of the sapporo2.config file.
+
+You can use that file to set at runtime properties of the
+execution configuration, with respect to the number 
+of GPU devices.
+Format:
+ndev
+dev_id1
+dev_id2
+...
+dev_idn
+
+
+The first line contains the number of devices to use:
+- If ndev is < 0 , the driver will try to use abs(ndev) devices using which ever device is available. All following lines will be ignored.
+- If ndev is > 0, a list should follow with ndev deviceIDs (0,1,2,..) that the library will try. If any of those devices is not available execution will stop.
+- If ndev = 0, the library will try to use as many devices as available in the system
+
+
+Example 1, content:
+-2
+
+This will try to use which ever 2 devices are available
+
+Example 2, content:
+2
+0
+2
+
+This will try to use 2 devices, device 0 and device 2
+
+Example 3, content:
+0
+
+This will try to use as many GPUs as are available
