@@ -1414,15 +1414,14 @@ double sapporo::evaluate_gravity(int ni, int nj)
   {
     if(integrationPrecision == DEFAULT)
     {
-      sharedMemSizeEval    = p*q*(sizeof(DS4) + sizeof(float4)); //4th order Double Single
-      sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(2*sizeof(float4) + 3*sizeof(int)); //4th DS  
-      
       #ifdef ENABLE_THREAD_BLOCK_SIZE_OPTIMIZATION
         //This is most optimal one for Fourth order Double-Single. 
         if(ni <= 256 && ni >= 32)   
           q = min(sapdevice->evalgravKernel.get_workGroupMaxSize()/ni, 32);      
       #endif
-      
+          
+      sharedMemSizeEval    = p*q*(sizeof(DS4) + sizeof(float4)); //4th order Double Single
+      sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(2*sizeof(float4) + 3*sizeof(int)); //4th DS  
     }
     if(integrationPrecision == DOUBLE)
     {

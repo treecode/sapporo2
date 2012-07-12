@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
   
   int integrationOrder = 1;     //Fourth
   int integrationPrecision = 0; //Default double-single
-  int nDevices = 1;
+  int nDevices = 0;
   
  
   if (argc > 3) integrationOrder        = atoi(argv[3]);
