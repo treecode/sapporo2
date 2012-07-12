@@ -38,6 +38,10 @@ static sapporo2::device   *sapdevice;
 #pragma omp threadprivate(sapdevice)
 
 
+//References to the sapdevice per thread
+sapporo2::device **deviceList;
+
+
 /*
 
 Application library interface
@@ -49,12 +53,13 @@ void sapporo::cleanUpDevice()
   {
     if(sapdevice != NULL)
     {
-        cerr << "Clean up2 \n";
       delete sapdevice;
-      sapdevice = NULL;
-        cerr << "Clean up3 \n";
+      sapdevice = NULL;      
     }
-  }
+  } //end omp parallel
+  
+  delete[] deviceList;
+  deviceList = NULL;
 }
 
 #ifdef DEBUG_PRINT
@@ -77,8 +82,8 @@ int sapporo::open(std::string kernelFile, int *devices,
   dev::context        contextTest;  //Only used to retrieve the number of devices
 
   int numDev = 0;
+  
   #ifdef __OPENCL_DEV__
-//     const int numPlatform = contextTest.getPlatformInfo();
     numDev = contextTest.getDeviceCount(CL_DEVICE_TYPE_GPU, 0);
   #else
     numDev = contextTest.getDeviceCount();
@@ -87,10 +92,7 @@ int sapporo::open(std::string kernelFile, int *devices,
   cout << "Number of cpus available: " << omp_get_num_procs() << endl;
   cout << "Number of gpus available: " << numDev << endl;
 
-  // create as many CPU threads as there are CUDA devices
-  // and create the contexts
-  //   omp_set_num_threads(numDev);
-  //   omp_set_num_threads(3);-
+  // create as many CPU threads as there are CUDA devices and create the contexts
 
   int numThread = abs(nprocs);
 
@@ -98,13 +100,17 @@ int sapporo::open(std::string kernelFile, int *devices,
   {
     numThread = numDev;
   }
+  
+  deviceList = new sapporo2::device*[numThread];
 
   omp_set_num_threads(numThread);
   #pragma omp parallel
   {
     //Create context for each thread
     unsigned int tid      = omp_get_thread_num();
-    sapdevice = new sapporo2::device();
+    sapdevice             = new sapporo2::device();
+    
+    deviceList[tid] = sapdevice;
 
     //Let the driver try to get a device if nprocs < 0
     //Use 1...N if nprocs == 0
@@ -173,7 +179,7 @@ int sapporo::open(std::string kernelFile, int *devices,
     remapList[i] = 16383-i;
   }
   #endif
-
+  
   return 0;
 }
 
@@ -559,7 +565,7 @@ void sapporo::initialize_firstsend()
     }
   }
 
-  //TODO
+ 
   //Clear the temprorary vectors, they are not used anymore from now on
   address_j.clear();
   t_j.clear();
@@ -595,6 +601,9 @@ void sapporo::startGravCalc(int    nj,          int ni,
 
   //Its not allowed to send more particles than n_pipes
   assert(ni <= get_n_pipes());
+  
+  
+  EPS2     = eps2;  
 
   //If this is the first send, then we have to allocate memory
   //distribute the particles etc.
@@ -604,31 +613,40 @@ void sapporo::startGravCalc(int    nj,          int ni,
   }
 
   double4 temp4;
-  //Copy i-particles to device structures
+  //Copy i-particles to device structures, first only to device 0
+  //then from device 0 we use memcpy to get the data into the 
+  //other devs buffers
+  int toDevice = 0;
+  
   for (int i = 0; i < ni; i++)
   {
     temp4.x  = xi[i][0]; temp4.y = xi[i][1]; temp4.z = xi[i][2]; temp4.w = h2[i];
+    deviceList[toDevice]->pos_i[i] = temp4;
     pos_i[i] = temp4;
+
 
     if(integrationOrder > GRAPE5)
     {
-      id_i[i]  = id[i];
-
-      temp4.x  = vi[i][0]; temp4.y = vi[i][1]; temp4.z = vi[i][2]; temp4.w = eps2;      
-      vel_i[i] = temp4;
-
+      temp4.x  = vi[i][0]; temp4.y = vi[i][1]; temp4.z = vi[i][2]; temp4.w = eps2;   
+      
       if(eps2_i != NULL)  //Seperate softening for i-particles
-        vel_i[i].w = eps2_i[i];
+        temp4.w = eps2_i[i];        
+      
+      deviceList[toDevice]->id_i[i]  = id[i];        
+      deviceList[toDevice]->vel_i[i] = temp4;
+      
+      vel_i[i] = temp4;
+      id_i[i]  = id[i];      
     }
 
 
     if(integrationOrder > FOURTH)
     {
       temp4.x    = a[i][0]; temp4.y = a[i][1]; temp4.z = a[i][2]; temp4.w = 0;      
+      deviceList[toDevice]->accin_i[i] = temp4;
+      
       accin_i[i] = temp4;
     }
-
-    EPS2     = eps2;
 
     #ifdef DEBUG_PRINT
       if(integrationOrder == GRAPE5)
@@ -640,20 +658,30 @@ void sapporo::startGravCalc(int    nj,          int ni,
       {
         fprintf(stderr, "Inpdevice= %d,\ti: %d\tindex: %d\teps2: %f\t%f\t%f\t%f\t%f\t%f\t%f",
               -1,i,id[i], eps2, xi[i][0],xi[i][1],xi[i][2],vi[i][0],vi[i][1] ,vi[i][2]);
-
+        
+        if(integrationOrder > FOURTH)
+          fprintf(stderr, "\t%f %f %f\n", a[i][0], a[i][1], a[i][2]);
+        else
+          fprintf(stderr, "\n");    
       }
-
-      if(integrationOrder > FOURTH)
-      {
-        fprintf(stderr, "\t%f %f %f\n", a[i][0], a[i][1], a[i][2]);
-      }
-      else
-      {
-        fprintf(stderr, "\n");
-      }
-
     #endif
+  }//for i
+
+  //Copy i particles to the other host side device buffers  
+  for(int i = toDevice+1;  i < nCUDAdevices; i++)
+  {
+      memcpy(&sapdevice->pos_i[i], &sapdevice->pos_i[toDevice], sizeof(double4) * ni);
+      if(integrationOrder > GRAPE5)
+      {
+        memcpy(&sapdevice->vel_i[0], &vel_i[0], sizeof(double4) * ni);
+        memcpy(&sapdevice->id_i[0],  &id_i[0],  sizeof(int)     * ni);  
+        
+        if(integrationOrder > FOURTH)
+          memcpy(&sapdevice->accin_i[0], &accin_i[0], sizeof(double4) * ni);        
+      }
   }
+  
+
 
   #pragma omp parallel
   {
@@ -964,6 +992,8 @@ void sapporo::retrieve_i_particle_results(int ni)
   cerr << "retrieve_i_particle_results\n";
  #endif
 
+  //Called inside an OMP parallel section
+  
   //TODO make this better as with the other memory copies
   //double t0 = get_time();
   sapdevice->accin_i.d2h(ni);
