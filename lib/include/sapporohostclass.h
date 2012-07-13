@@ -13,7 +13,6 @@
 #ifndef _SAPPORO_H_
 #define _SAPPORO_H_
 
-//#include <builtin_types.h>
 #include <iostream>
 #include <vector>
 #include <map>
@@ -66,15 +65,15 @@ inline double to_double(DS a) {
 
 struct memPointerJstruct
 {
-  int     *address;
-  double2 *t_j;
-  double4 *pos_j;
-  double4 *vel_j;
-  double4 *acc_j;       //Acceleration
-  double4 *jrk_j;       //Jerk
-  double4 *snp_j;       //Snap
-  double4 *crk_j;       //Crack
-  int     *id_j;  
+//   int     *address;
+//   double2 *t_j;
+//   double4 *pos_j;
+//   double4 *vel_j;
+//   double4 *acc_j;       //Acceleration
+//   double4 *jrk_j;       //Jerk
+//   double4 *snp_j;       //Snap
+//   double4 *crk_j;       //Crack
+//   int     *id_j;  
   int     count;
   int     toCopy;
 } typedef memPointerJstruct;
@@ -103,16 +102,6 @@ protected:
   //int4.x = device
   //int4.y = arraylocation
   //int4.z = device address
- 
-  vector<int>     address_j;
-  vector<int>     id_j;
-  vector<double2> t_j;
-  vector<double4> pos_j;
-  vector<double4> vel_j;
-  vector<double4> acc_j;
-  vector<double4> jrk_j;
-  vector<double4> snp_j;
-  vector<double4> crk_j;
 
   
   double t_i;
@@ -131,7 +120,6 @@ protected:
   void fetch_data_from_device(int, int );
   void retrieve_i_particle_results(int ni);
   int  fetch_ngb_list_from_device();
-  void initialize_firstsend();
   void increase_jMemory(); 
   
   void copyJInDev(int nj);
@@ -155,13 +143,13 @@ public:
     ngb_list_copied = false;
     
     //Clear the J particles
-    address_j.clear();    
-    t_j.clear();
-    pos_j.clear();
-    vel_j.clear();
-    acc_j.clear();
-    jrk_j.clear();
-    id_j.clear();
+//     address_j.clear();    
+//     t_j.clear();
+//     pos_j.clear();
+//     vel_j.clear();
+//     acc_j.clear();
+//     jrk_j.clear();
+//     id_j.clear();
     
     predict     = false;
     isFirstSend = true;

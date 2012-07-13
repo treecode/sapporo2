@@ -14,13 +14,28 @@ vel_j.w = eps2
 
 */
 
-int remapList[16384];
 
 inline int n_norm(int n, int j) {
   n = ((n-1)/j) * j + j;
   if (n == 0) n = j;
   return n;
 }
+
+static __inline__  double4 make_double4(double x, double y, double z, double w)
+{
+  double4 t; t.x = x; t.y = y; t.z = z; t.w = w; return t;
+}
+
+static __inline__  double2 make_double2(double x, double y)
+{
+  double2 t; t.x = x; t.y = y; return t;
+}
+
+static __inline__ int4 make_int4(int x, int y, int z, int w)
+{
+  int4 t; t.x = x; t.y = y; t.z = z; t.w = w; return t;
+}
+
 
 
 double get_time() {
@@ -121,6 +136,7 @@ int sapporo::open(std::string kernelFile, int *devices,
     {
       dev = tid;
     }
+    
     if(nprocs > 0)
     {
       //The user gave us a set of device ids
@@ -129,15 +145,17 @@ int sapporo::open(std::string kernelFile, int *devices,
 
     //Assign the device and load the kernels
     sapdevice->assignDevice(dev, integrationOrder);
-
     sapdevice->loadComputeKernels(kernelFile.c_str());
 
     if(tid == 0)
     {
       nCUDAdevices = omp_get_num_threads();
     }
+    
+    //Allocate initial memory for 16k particles per device
+    sapdevice->allocateMemory(16384, get_n_pipes());
+    nj_max = 16384;
 
-    //Set the number of blocks used
 
   }//end pragma omp parallel
 
@@ -145,16 +163,6 @@ int sapporo::open(std::string kernelFile, int *devices,
   //that handle the device communication
   jMemAddresses.resize(nCUDAdevices);
 
-
-  #ifdef REMAP
-  //Make out magic remap list
-  for(int i=0; i < 16384; i++)
-  {
-//     remapList[i] = 999-i;
-    remapList[i] = 16383-i;
-  }
-  #endif
-  
   return 0;
 }
 
@@ -168,26 +176,6 @@ int sapporo::close() {
     delete sapdevice;
     sapdevice = NULL;
   }
-
-  address_j.clear();
-  pos_j.clear();
-
-  if(integrationOrder > GRAPE5)
-  {
-    t_j.clear();
-    vel_j.clear();
-    acc_j.clear();
-    jrk_j.clear();
-    id_j.clear();
-    
-    if(integrationOrder > FOURTH)
-    {
-      snp_j.clear();
-      crk_j.clear();
-    }    
-  }
-
-
 
   return 0;
 }
@@ -238,123 +226,75 @@ int sapporo::set_j_particle(int    address,
   //Prevent unused compiler warning
   k18 = k18;
     
-
-  #ifdef REMAP
-    //Put the address on a random other location
-    address = remapList[address];
-  #endif
-
   predJOnHost  = false; //Reset the buffers on the device since they can be modified
   nj_updated   = true;  //There are particles that are updated
   int storeLoc = -1;    //-1 if isFirstSend, otherwise it will give direct location in memory
 
-  double4 temp4; 
-  double2 temp2;
-  
-  if(isFirstSend)
-  {
-    //Store particles in temporary vectors
-    temp4.x = x[0]; temp4.y = x[1]; temp4.z = x[2]; temp4.w = mass;
-    pos_j.push_back(temp4);
-    address_j.push_back(address);
+  //Check if the address does not fall outside the allocated memory range
+    
+  //Let increase_jMemory increase to address+10%
+  if (address >= nj_max) {
+    fprintf(stderr, "Increasing nj_max! Nj_max was: %d  to be stored address: %d \n",
+            nj_max, address);
+    increase_jMemory();
 
-    if(integrationOrder > GRAPE5)
-    {
-      temp2.x = tj; temp2.y = dtj;
-      t_j.push_back(temp2);
-      temp4.x = v[0]; temp4.y = v[1]; temp4.z = v[2]; temp4.w = eps;
-      vel_j.push_back(temp4); //Store eps in vel.w
-      temp4.x = a2[0]; temp4.y = a2[1]; temp4.z = a2[2]; temp4.w = 0.0;
-      acc_j.push_back(temp4 );
-      temp4.x = j6[0]; temp4.y = j6[1]; temp4.z = j6[2]; temp4.w = 0.0;
-      jrk_j.push_back(temp4);
-      id_j.push_back ( id);
-    }
-      
-    //For 6th and 8 order we need more parameters
-    if(integrationOrder > FOURTH)
-    {
-      temp4.x = snp[0]; temp4.y = snp[1]; temp4.z = snp[2]; temp4.w = 0.0;
-      snp_j.push_back(temp4);
-      temp4.x = crk[0]; temp4.y = crk[1]; temp4.z = crk[2]; temp4.w = 0.0;
-      crk_j.push_back(temp4);
-    }
-
-    nj_modified = pos_j.size();
-  }//if is firstsend
-  else
-  {
-    //Check if the address does not fall outside the allocated memory range
+    //Extra check, if we are still outside nj_max, we quit since particles are not
+    //nicely send in order
     if (address >= nj_max) {
-      fprintf(stderr, "Increasing nj_max! Nj_max was: %d  to be stored address: %d \n",
-              nj_max, address);
-      increase_jMemory();
-
-      //Extra check, if we are still outside nj_max, we quit since particles are not
-      //nicely send in order
-      if (address >= nj_max) {
-        fprintf(stderr, "Increasing nj_max was not enough! Send particles in order to the library! Exit\n");
-        exit(-1);
-      }
-    }
-
-    //Memory has been allocated, now we can store the particles
-    //First calculate on which device this particle has to be stored
-    //and on which physical address on that device
-    int dev           = address % nCUDAdevices;
-    int devAddr       = address / nCUDAdevices;
-    storeLoc          = jMemAddresses[dev].count;
-
-    //Store this information, incase particles get overwritten
-    map<int, int4>::iterator iterator = mappingFromIndexToDevIndex.find(address);
-    map<int, int4>::iterator end      = mappingFromIndexToDevIndex.end();
-
-
-    if(iterator != end)
-    {
-      //Particle with this address has been set before, retrieve previous
-      //calculated indices and overwrite them with the new info
-      int4 addrInfo = (*iterator).second;
-      dev           = addrInfo.x;
-      storeLoc      = addrInfo.y;
-      devAddr       = addrInfo.z;
-    }
-    else
-    {
-      //New, not set before particle, save address info and increase particles
-      //on that specific device by one
-      int4 tempI4;
-      tempI4.x = dev; tempI4.y = storeLoc; tempI4.z = devAddr; tempI4.w = -1; 
-      mappingFromIndexToDevIndex[address] = tempI4;
-      jMemAddresses[dev].count++;
-    }
-
-    temp4.x = x[0]; temp4.y = x[1]; temp4.z = x[2]; temp4.w = mass;
-    jMemAddresses[dev].pos_j[storeLoc]        = temp4;
-    jMemAddresses[dev].address[storeLoc]      = devAddr;
-
-    if(integrationOrder > GRAPE5)
-    {
-      temp2.x = tj; temp2.y = dtj;            
-      jMemAddresses[dev].t_j[storeLoc]          = temp2;
-      temp4.x = v[0]; temp4.y = v[1]; temp4.z = v[2]; temp4.w = eps;      
-      jMemAddresses[dev].vel_j[storeLoc]        = temp4;  //Store eps in vel.w
-      temp4.x = a2[0]; temp4.y = a2[1]; temp4.z = a2[2]; temp4.w = 0.0;            
-      jMemAddresses[dev].acc_j[storeLoc]        = temp4;
-      temp4.x = j6[0]; temp4.y = j6[1]; temp4.z = j6[2]; temp4.w = 0.0;
-      jMemAddresses[dev].jrk_j[storeLoc]        = temp4;
-      jMemAddresses[dev].id_j[storeLoc]         = id;
-    }
-
-    //For 6th and 8 order we need more parameters
-    if(integrationOrder > FOURTH)
-    {
-      temp4.x = snp[0]; temp4.y = snp[1]; temp4.z = snp[2]; temp4.w = 0.0;      
-      jMemAddresses[dev].snp_j[storeLoc]        = temp4;
-      temp4.x = crk[0]; temp4.y = crk[1]; temp4.z = crk[2]; temp4.w = 0.0;      
-      jMemAddresses[dev].crk_j[storeLoc]        = temp4;
+      fprintf(stderr, "Increasing nj_max was not enough! Send particles in order to the library! Exit\n");
+      exit(-1);
     }
   }
+
+  //Memory has been allocated, now we can store the particles
+  //First calculate on which device this particle has to be stored
+  //and on which physical address on that device. Note that the particles
+  //are distributed to the different devices in a round-robin way (based on the addres)
+  int dev           = address % nCUDAdevices;
+  int devAddr       = address / nCUDAdevices;
+  storeLoc          = jMemAddresses[dev].count;
+
+  //Store this information, incase particles get overwritten
+  map<int, int4>::iterator iterator = mappingFromIndexToDevIndex.find(address);
+  map<int, int4>::iterator end      = mappingFromIndexToDevIndex.end();
+
+
+  if(iterator != end)
+  {
+    //Particle with this address has been set before, retrieve previous
+    //calculated indices and overwrite them with the new info
+    int4 addrInfo = (*iterator).second;
+    dev           = addrInfo.x;
+    storeLoc      = addrInfo.y;
+    devAddr       = addrInfo.z;
+  }
+  else
+  {
+    //New particle not set before, save address info and increase particles
+    //on that specific device by one
+    mappingFromIndexToDevIndex[address] = make_int4(dev, storeLoc, devAddr, -1);
+    jMemAddresses[dev].count++;
+  }
+
+
+  deviceList[dev]->pos_j_temp[storeLoc] = make_double4(x[0], x[1], x[2], mass);
+  deviceList[dev]->address_j[storeLoc]  = devAddr;
+  
+  if(integrationOrder > GRAPE5)
+  {
+    deviceList[dev]->t_j_temp[storeLoc]          = make_double2(tj, dtj);
+    deviceList[dev]->vel_j_temp[storeLoc]        = make_double4(v[0], v[1], v[2], eps);
+    deviceList[dev]->acc_j_temp[storeLoc]        = make_double4(a2[0], a2[1], a2[2], 0.0);
+    deviceList[dev]->jrk_j_temp[storeLoc]        = make_double4(j6[0], j6[1], j6[2], 0.0);
+    deviceList[dev]->id_j_temp[storeLoc]         = id;
+    //For 6th and 8 order we need more parameters
+    if(integrationOrder > FOURTH)
+    {
+      deviceList[dev]->snp_j_temp[storeLoc]        = make_double4(snp[0], snp[1], snp[2], 0.0);
+      deviceList[dev]->crk_j_temp[storeLoc]        = make_double4(crk[0], crk[1], crk[2], 0.0);
+    }
+  }
+
 
   #ifdef DEBUG_PRINT
     if(integrationOrder == GRAPE5)
@@ -386,10 +326,8 @@ void sapporo::increase_jMemory()
 
   //Increase by 10 %
   int temp = curJMax * 1.1;
-
-  //Minimum of 16k
-  if (temp < 16384)
-    temp = 16384;
+  
+  fprintf(stderr, "Test: %d \t %d \n", nj_max, temp);
 
 
   int temp2 = temp / nCUDAdevices;
@@ -422,140 +360,10 @@ void sapporo::increase_jMemory()
     //keep counters
     memPointerJstruct tempStruct         = jMemAddresses[omp_get_thread_num()];
 
-    tempStruct.address = &sapdevice->address_j[0];
-    tempStruct.pos_j   = &sapdevice->pos_j_temp[0];
-
-
-    if(integrationOrder > GRAPE5)
-    {
-      tempStruct.t_j     = &sapdevice->t_j_temp[0];
-      tempStruct.vel_j   = &sapdevice->vel_j_temp[0];
-      tempStruct.acc_j   = &sapdevice->acc_j_temp[0];
-      tempStruct.jrk_j   = &sapdevice->jrk_j_temp[0];
-      tempStruct.id_j    = &sapdevice->id_j_temp[0];
-    }
-
-    if(integrationOrder > FOURTH)
-    {
-      tempStruct.snp_j   = &sapdevice->snp_j_temp[0];
-      tempStruct.crk_j   = &sapdevice->crk_j_temp[0];
-    }
 
     jMemAddresses[omp_get_thread_num()] = tempStruct;
+    
   } //end parallel section
-}
-
-void sapporo::initialize_firstsend()
-{
-  #ifdef DEBUG_PRINT
-    cerr << "initialize_firstsend nj_modified: " << nj_modified << "\n";
-  #endif
-
-  isFirstSend = false;
-
-  nj_total = nj_modified;
-
-  //Make nj max a multiple of the number of devices
-  //and increase its size by 10% for a small
-  //extra buffer incase extra particle are added
-  int temp  = nj_total * 1.1;
-  int temp2 = temp / nCUDAdevices;
-  temp2++;
-  temp2     = temp2 * nCUDAdevices; //Total number of particles
-
-  nj_max = temp2;       //If address goes over nj_max we realloc
-
-  #pragma omp parallel
-  {
-    //Number of particles on this device:
-    int nj_local = nj_modified / nCUDAdevices;
-
-    if(omp_get_thread_num() < (nj_modified  % nCUDAdevices))
-      nj_local++;
-
-    sapdevice->nj_local = nj_local;
-
-    int nj_max_local = nj_max / nCUDAdevices;
-    sapdevice->allocateMemory(nj_max_local, get_n_pipes());
-
-
-    //Store the memory pointers for direct indexing
-    memPointerJstruct tempStruct;
-    tempStruct.pos_j   = &sapdevice->pos_j_temp[0];
-    tempStruct.address = &sapdevice->address_j[0];
-
-    if(integrationOrder > GRAPE5)
-    {
-      tempStruct.t_j     = &sapdevice->t_j_temp[0];
-      tempStruct.vel_j   = &sapdevice->vel_j_temp[0];
-      tempStruct.acc_j   = &sapdevice->acc_j_temp[0];
-      tempStruct.jrk_j   = &sapdevice->jrk_j_temp[0];
-      tempStruct.id_j    = &sapdevice->id_j_temp[0];
-    }
-
-    if(integrationOrder > FOURTH)
-    {
-      tempStruct.snp_j   = &sapdevice->snp_j_temp[0];
-      tempStruct.crk_j   = &sapdevice->crk_j_temp[0];
-    }
-
-
-    tempStruct.count   = 0;   //Number of particles currently stored
-    tempStruct.toCopy  = 0;   //Number of particles to be copied on the device it self
-    jMemAddresses[omp_get_thread_num()] = tempStruct;
-  } //end parallel section
-
-  //Set & send the initial particles using the set j particle function
-  for(int i=0 ; i < nj_total; i++)
-  {
-    double k18[3] = {0,0,0};
-    double a2[3], v[3], x[3], j6[3], snp[3], crk[3];
-
-    x[0] = pos_j[i].x; x[1] = pos_j[i].y; x[2] = pos_j[i].z;
-
-    if(integrationOrder > GRAPE5)
-    {
-      a2[0] = acc_j[i].x; a2[1] = acc_j[i].y; a2[2] = acc_j[i].z;
-      j6[0] = jrk_j[i].x; j6[1] = jrk_j[i].y; j6[2] = jrk_j[i].z;
-      v[0] = vel_j[i].x; v[1] = vel_j[i].y; v[2] = vel_j[i].z;
-    }
-
-    if(integrationOrder > FOURTH)
-    {
-      snp[0] = snp_j[i].x; snp[1] = snp_j[i].y; snp[2] = snp_j[i].z;
-      crk[0] = crk_j[i].x; crk[1] = crk_j[i].y; crk[2] = crk_j[i].z;
-    }
-
-    if(integrationOrder == GRAPE5)
-    {
-      //GRAPE5 has less properties so only use the properties that are set
-      this->set_j_particle(address_j[i], 0, 0, 0, pos_j[i].w,
-                         k18, j6, a2, v,x, snp, crk, 0);
-
-    }
-    else
-    {
-      this->set_j_particle(address_j[i], id_j[i], t_j[i].x, t_j[i].y, pos_j[i].w,
-                         k18, j6, a2, v,x, snp, crk, vel_j[i].w);
-    }
-  }
-
- 
-  //Clear the temprorary vectors, they are not used anymore from now on
-  address_j.clear();
-  t_j.clear();
-  pos_j.clear();
-  vel_j.clear();
-  acc_j.clear();
-  jrk_j.clear();
-  id_j.clear();
-
-  if(integrationOrder > FOURTH)
-  {
-    snp_j.clear();
-    crk_j.clear();
-  }
-
 }
 
 
@@ -577,17 +385,8 @@ void sapporo::startGravCalc(int    nj,          int ni,
   //Its not allowed to send more particles than n_pipes
   assert(ni <= get_n_pipes());
   
-  
   EPS2     = eps2;  
 
-  //If this is the first send, then we have to allocate memory
-  //distribute the particles etc.
-  if(isFirstSend)
-  {
-    initialize_firstsend();
-  }
-
-  double4 temp4;
   //Copy i-particles to device structures, first only to device 0
   //then from device 0 we use memcpy to get the data into the 
   //other devs buffers
@@ -595,23 +394,19 @@ void sapporo::startGravCalc(int    nj,          int ni,
   
   for (int i = 0; i < ni; i++)
   {
-    temp4.x  = xi[i][0]; temp4.y = xi[i][1]; temp4.z = xi[i][2]; temp4.w = h2[i];
-    deviceList[toDevice]->pos_i[i] = temp4;
+    deviceList[toDevice]->pos_i[i] = make_double4(xi[i][0], xi[i][1], xi[i][2], h2[i]);
 
     if(integrationOrder > GRAPE5)
     {
-      temp4.x  = vi[i][0]; temp4.y = vi[i][1]; temp4.z = vi[i][2]; temp4.w = eps2;   
+      deviceList[toDevice]->id_i[i]  = id[i];        
+      deviceList[toDevice]->vel_i[i] = make_double4(vi[i][0], vi[i][1], vi[i][2], eps2);
       
       if(eps2_i != NULL)  //Seperate softening for i-particles
-        temp4.w = eps2_i[i];        
-      
-      deviceList[toDevice]->id_i[i]  = id[i];        
-      deviceList[toDevice]->vel_i[i] = temp4;
+        deviceList[toDevice]->vel_i[i].w = eps2_i[i];              
       
       if(integrationOrder > FOURTH)
       {
-        temp4.x    = a[i][0]; temp4.y = a[i][1]; temp4.z = a[i][2]; temp4.w = 0;      
-        deviceList[toDevice]->accin_i[i] = temp4;
+        deviceList[toDevice]->accin_i[i] = make_double4(a[i][0], a[i][1], a[i][2], 0);
       }      
     }
 
@@ -746,9 +541,6 @@ int sapporo::getGravResults(int nj, int ni,
       acc[i][1] += deviceList[dev]->accin_i[i].y;
       acc[i][2] += deviceList[dev]->accin_i[i].z;
 
-      //fprintf(stdout, "device= %d, ni= %d pot = %g\n", dev, i, acci.x);
-      //fprintf(stderr, "Outdevice= %d,\t%d\t%f\t%f\t%f\n", dev,i, acci.x, acci.y, acci.z);
-
       if(integrationOrder > GRAPE5)
       {
         jerk[i][0] += deviceList[dev]->jrk_i[i].x;
@@ -802,9 +594,9 @@ int sapporo::read_ngb_list(int cluster_id)
   cluster_id = cluster_id;
     
 
- #ifdef DEBUG_PRINT
-  fprintf(stderr, "read_ngb_list\n");
- #endif
+  #ifdef DEBUG_PRINT
+    fprintf(stderr, "read_ngb_list\n");
+  #endif
 
   bool overflow = false;
   int *ni = new int[omp_get_max_threads()];
@@ -944,9 +736,9 @@ void sapporo::send_i_particles_to_device(int ni)
 
 void sapporo::retrieve_i_particle_results(int ni)
 {
- #ifdef DEBUG_PRINT
-  cerr << "retrieve_i_particle_results\n";
- #endif
+  #ifdef DEBUG_PRINT
+    cerr << "retrieve_i_particle_results\n";
+  #endif
 
   //Called inside an OMP parallel section
   
@@ -977,10 +769,6 @@ void sapporo::retrieve_predicted_j_particle(int addr,  double &mass,
     cerr << "retrieve_predicted_j_particle address: " << addr << endl;
   #endif
 
-  #ifdef REMAP
-    //Put the address on a random other location
-    addr = remapList[addr];
-  #endif
 
   if(predJOnHost == false)
   {
@@ -1035,7 +823,6 @@ void sapporo::retrieve_predicted_j_particle(int addr,  double &mass,
   predJOnHost = true;
 
   #ifdef DEBUG_PRINT
-//     cerr << "retrieve_predicted_j_particle res, from devAddr: " << addr / nCUDAdevices << endl;
     fprintf(stderr, "Getj %d\t%lf\tpos: %g %g %g\tvel: %g %g %g\tacc: %g %g %g\n",
             addr,
             id,
@@ -1059,11 +846,6 @@ void sapporo::retrieve_j_particle_state(int addr,       double &mass,
     cerr << "retrieve_j_particle_state, address: " << addr << endl;
   #endif
 
-  #ifdef REMAP
-    //Put the address on a random other location
-    addr = remapList[addr];
-  #endif
-
   if(predJOnHost == false)
   {
     //We need to copy the particles back to the host
@@ -1071,7 +853,6 @@ void sapporo::retrieve_j_particle_state(int addr,       double &mass,
     {
       //Retrieve data from the devices (in parallel)
       sapdevice->pos_j.d2h();
-
 
       if(integrationOrder > GRAPE5)
       {
@@ -1148,7 +929,6 @@ void sapporo::retrieve_j_particle_state(int addr,       double &mass,
   predJOnHost = true;
 
   #ifdef DEBUG_PRINT
-//     cerr << "retrieve_predicted_j_particle res, from devAddr: " << addr / nCUDAdevices << endl;
     fprintf(stderr, "GetjState %d\t%lf\tpos: %g %g %g\tvel: %g %g %g\tacc: %g %g %g\n",
             addr,
             id,
@@ -1174,11 +954,6 @@ int sapporo::fetch_ngb_list_from_device() {
 
 void sapporo::forcePrediction(int nj)
 {
-
-  if(isFirstSend)
-  {
-    initialize_firstsend();
-  }
 
   #pragma omp parallel
   {
@@ -1382,9 +1157,9 @@ double sapporo::evaluate_gravity(int ni, int nj)
       //Double Single Precision      
       sharedMemSizeEval    = p*q*(sizeof(DS4)); //G5 DS precision
       sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(sizeof(float4)); //G5 DS precision (acc is SP)            
-    }    
-    
+    }        
   }
+  
   if(integrationOrder == FOURTH)
   {
     if(integrationPrecision == DEFAULT)
@@ -1405,6 +1180,7 @@ double sapporo::evaluate_gravity(int ni, int nj)
       sharedMemSizeReduce = sapdevice->get_NBLOCKS()*(2*sizeof(double4) + 2*sizeof(int) + sizeof(double));
     }
   }
+  
   if(integrationOrder == SIXTH)
   {
     //Only has a double precision version
@@ -1466,7 +1242,6 @@ double sapporo::evaluate_gravity(int ni, int nj)
   }
 
   sapdevice->evalgravKernel.setWork_threadblock2D(p, q, (sapdevice->get_NBLOCKS()), 1); //Default
-  
   sapdevice->evalgravKernel.execute();
 
   //Kernel reduce

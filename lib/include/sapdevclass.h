@@ -121,6 +121,7 @@ namespace sapporo2 {
       int assignDevice(int devID, int order = 0)
       {
         integrationOrder = order;
+        cerr << "integrationOrder : " << integrationOrder << endl;        
         
         #ifdef __OPENCL_DEV__
 //           const int numPlatform = context.getPlatformInfo();
@@ -141,12 +142,37 @@ namespace sapporo2 {
         NBLOCKS = nMulti*blocksPerMulti;
         cerr << "Using  " << blocksPerMulti << " blocks per multi-processor for a total of : " << NBLOCKS << std::endl;
         //NBLOCKS = 1 ;
+        
+        
+        //Set the device memory contexts
+        
+        //J-particle buffers
+        pPos_j.setContext(context);     pVel_j.setContext(context);
+        address_j.setContext(context);  t_j.setContext(context);
+        pos_j.setContext(context);      vel_j.setContext(context);
+        acc_j.setContext(context);      jrk_j.setContext(context);
+        snp_j.setContext(context);      crk_j.setContext(context);
+        id_j.setContext(context);       pAcc_j.setContext(context);
+        
+        //Temporary J-particle buffers
+        t_j_temp.setContext(context);     id_j_temp.setContext(context);    
+        pos_j_temp.setContext(context);   vel_j_temp.setContext(context);
+        acc_j_temp.setContext(context);   jrk_j_temp.setContext(context); 
+        snp_j_temp.setContext(context);   crk_j_temp.setContext(context); 
+        
+        //i-particle buffers
+        pos_i.setContext(context);      vel_i.setContext(context);
+        acc_i.setContext(context);      jrk_i.setContext(context);
+        ds_i.setContext(context);       ngb_list_i.setContext(context);
+        id_i.setContext(context);       accin_i.setContext(context);
+        snp_i.setContext(context);      crk_i.setContext(context);        
+        
         return 0;
       }
       
       //Load the kernels
       int loadComputeKernels(const char *filename)
-     {
+      {
         //Assign context and load the source file
         copyJParticles.setContext(context);
         predictKernel.setContext(context);
@@ -174,36 +200,14 @@ namespace sapporo2 {
       int allocateMemory(int nj, int n_pipes)
       {
         nj_local = nj;
-        //Set the device contexts
-        pPos_j.setContext(context);     pVel_j.setContext(context);
-        address_j.setContext(context);  t_j.setContext(context);
-        pos_j.setContext(context);      vel_j.setContext(context);
-        acc_j.setContext(context);      jrk_j.setContext(context);
-        snp_j.setContext(context);      crk_j.setContext(context);
-        id_j.setContext(context);       pAcc_j.setContext(context);
-        
-                
-        t_j_temp.setContext(context);      
-        pos_j_temp.setContext(context);   vel_j_temp.setContext(context);
-        acc_j_temp.setContext(context);   jrk_j_temp.setContext(context); 
-        snp_j_temp.setContext(context);   crk_j_temp.setContext(context); 
-        id_j_temp.setContext(context);    
-        
-        pos_i.setContext(context);      vel_i.setContext(context);
-        acc_i.setContext(context);      jrk_i.setContext(context);
-        ds_i.setContext(context);       ngb_list_i.setContext(context);
-        id_i.setContext(context);       accin_i.setContext(context);
-        snp_i.setContext(context);      crk_i.setContext(context);
-                
-        //Finally allocate memory
-        
+  
+       
         //J-particle allocation
         pPos_j.allocate(nj, false);                    
         pos_j.allocate(nj, false);   
         address_j.allocate(nj, false);      
         
-        cerr << "integrationOrder : " << integrationOrder << endl;
-        
+
         if(integrationOrder > GRAPE5)
         {
           acc_j.allocate(nj, false);
@@ -212,16 +216,16 @@ namespace sapporo2 {
           t_j.allocate(nj, false);       
           vel_j.allocate(nj, false); 
           pVel_j.allocate(nj, false);
+        
+          if(integrationOrder > FOURTH)
+          {
+            snp_j.allocate(nj, false);    
+            crk_j.allocate(nj, false); 
+            pAcc_j.allocate(nj, false); 
+          }
         }
         
-        if(integrationOrder > FOURTH)
-        {
-          snp_j.allocate(nj, false);       crk_j.allocate(nj, false); 
-          pAcc_j.allocate(nj, false); 
-        }
-        
-        //TODO make this pinned memory since the communicate with the host
-        
+        //TODO make this pinned memory since the communicate with the host        
         pos_j_temp.allocate(nj, false);       
         
 
@@ -230,16 +234,14 @@ namespace sapporo2 {
           t_j_temp.allocate(nj, false);         id_j_temp.allocate(nj, false);  
           acc_j_temp.allocate(nj, false);       jrk_j_temp.allocate(nj, false); 
           vel_j_temp.allocate(nj, false); 
+        
+          if(integrationOrder > FOURTH)
+          {
+            snp_j_temp.allocate(nj, false);       crk_j_temp.allocate(nj, false); 
+          }                
         }
         
-        if(integrationOrder > FOURTH)
-        {
-          snp_j_temp.allocate(nj, false);       crk_j_temp.allocate(nj, false); 
-        }                
-        
         //i particle TODO copied it from sap1, need to check how and why
-
-        
         //TODO make this pinned memory since the communicate with the host
         pos_i.allocate(n_pipes, false);   
         
@@ -252,14 +254,13 @@ namespace sapporo2 {
           jrk_i.allocate(n_pipes *      NBLOCKS, false);
           id_i.allocate (n_pipes *      NBLOCKS, false);   
           ds_i.allocate(n_pipes, false);             
-        }
-        
-        
-        if(integrationOrder > FOURTH)
-        {
-          snp_i.allocate(n_pipes *      NBLOCKS, false);
-          crk_i.allocate(n_pipes *      NBLOCKS, false);          
-        }        
+      
+          if(integrationOrder > FOURTH)
+          {
+            snp_i.allocate(n_pipes *      NBLOCKS, false);
+            crk_i.allocate(n_pipes *      NBLOCKS, false);          
+          }  
+        }  
         
 
 //         int ngbMem =  (n_pipes*(NGB_PP + 1) + n_pipes*NBLOCKS*(NGB_PP+1)); //TODO check / change!
@@ -271,12 +272,10 @@ namespace sapporo2 {
       
       int reallocJParticles(int nj)
       {
-         //Finally allocate memory
         //J-particle allocation
-        pPos_j.realloc(nj, false);     
+        pPos_j.realloc(nj, false);  
         pos_j.realloc(nj, false);       
         address_j.realloc(nj, false, false);  //Host content is newer than device so no copy
-        
         if(integrationOrder > GRAPE5)
         {
           pVel_j.realloc(nj, false);
@@ -284,14 +283,12 @@ namespace sapporo2 {
           t_j.realloc(nj, false);         id_j.realloc(nj, false);
           vel_j.realloc(nj, false); 
           acc_j.realloc(nj, false);       jrk_j.realloc(nj, false); 
-        }
-        
-        if(integrationOrder > FOURTH)
-        {
-          snp_j.realloc(nj, false);       crk_j.realloc(nj, false); 
-          pAcc_j.allocate(nj, false);       
+          if(integrationOrder > FOURTH)
+          {
+            snp_j.realloc(nj, false);       crk_j.realloc(nj, false); 
+            pAcc_j.allocate(nj, false);       
+          }   
         }        
-        
         //TODO make this pinned memory since they communicate with the host
         
         //3rd arguments is false since data on the host is newer than on the device
@@ -302,12 +299,12 @@ namespace sapporo2 {
           t_j_temp.realloc(nj, false,   false);         id_j_temp.realloc(nj, false, false);  
           vel_j_temp.realloc(nj, false, false); 
           acc_j_temp.realloc(nj, false, false);       jrk_j_temp.realloc(nj, false , false); 
-        }
         
-        if(integrationOrder > FOURTH)
-        {
-          snp_j_temp.realloc(nj, false, false);       crk_j_temp.realloc(nj, false, false); 
-        }          
+          if(integrationOrder > FOURTH)
+          {
+            snp_j_temp.realloc(nj, false, false);       crk_j_temp.realloc(nj, false, false); 
+          }  
+        }        
         
         return 0;
       }
