@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
   
   int integrationOrder = 1;     //Fourth
   int integrationPrecision = 0; //Default double-single
-  int nDevices = 1;
+  int nDevices = 0;
   
  
   if (argc > 3) integrationOrder        = atoi(argv[3]);
@@ -246,6 +246,10 @@ exit(0);
 			  nngb[i1],
 			  ngb_list);
 //   	fprintf(stderr," ipipe= %d: n_ngb= %d\n", i1 - i, nngb[i1]);
+//         for(int Z=0; Z < nngb[i1]; Z++)
+//         {
+//           fprintf(stderr,"%d\t%d\n", Z, ngb_list[Z]);
+//         }
       }
     }
     

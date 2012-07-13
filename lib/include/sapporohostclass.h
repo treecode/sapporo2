@@ -116,16 +116,6 @@ protected:
 
   
   double t_i;
-  vector<int>     id_i; 
-  vector<double4> pos_i;
-  vector<double4> vel_i;
-  vector<double4> accin_i;
-  vector<double4> acc_i;
-  vector<double4> jrk_i;
-  vector<double4> snp_i;
-  vector<double4> crk_i;
-  vector<double>   ds_i;
-  vector<int>     ngb_list_i;
   
   vector<memPointerJstruct> jMemAddresses;
   
@@ -159,8 +149,7 @@ protected:
 public:
   sapporo() {
     n_pipes = NPIPES;
-    pos_i.resize(n_pipes);
-    vel_i.resize(n_pipes);
+
     t_i = 0.0;
 
     ngb_list_copied = false;
