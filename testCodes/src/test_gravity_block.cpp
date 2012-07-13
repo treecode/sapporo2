@@ -246,6 +246,10 @@ exit(0);
 			  nngb[i1],
 			  ngb_list);
 //   	fprintf(stderr," ipipe= %d: n_ngb= %d\n", i1 - i, nngb[i1]);
+//         for(int Z=0; Z < nngb[i1]; Z++)
+//         {
+//           fprintf(stderr,"%d\t%d\n", Z, ngb_list[Z]);
+//         }
       }
     }
     

@@ -196,6 +196,7 @@ namespace sapporo2 {
         snp_i.setContext(context);      crk_i.setContext(context);
                 
         //Finally allocate memory
+        
         //J-particle allocation
         pPos_j.allocate(nj, false);                    
         pos_j.allocate(nj, false);   
