@@ -179,22 +179,24 @@ int sapporo::close() {
     acc_j.clear();
     jrk_j.clear();
     id_j.clear();
+    
+    if(integrationOrder > FOURTH)
+    {
+      snp_j.clear();
+      crk_j.clear();
+    }    
   }
 
-  if(integrationOrder > FOURTH)
-  {
-    snp_j.clear();
-    crk_j.clear();
-  }
+
 
   return 0;
 }
 
 //Set integrator prediction time-step
 int sapporo::set_time(double time) {
- #ifdef DEBUG_PRINT
-  cerr << "set_time: " << time << endl;
- #endif
+  #ifdef DEBUG_PRINT
+    cerr << "set_time: " << time << endl;
+  #endif
 
   t_i           = time;
   predict       = true;
@@ -204,9 +206,9 @@ int sapporo::set_time(double time) {
 }
 
 int sapporo::set_no_time() {
- #ifdef DEBUG_PRINT
-  cerr << "set_no_time" << endl;
- #endif
+  #ifdef DEBUG_PRINT
+    cerr << "set_no_time" << endl;
+  #endif
 
   t_i           = t_i;
   predict       = false; //No prediction when no predict is called
@@ -242,8 +244,8 @@ int sapporo::set_j_particle(int    address,
     address = remapList[address];
   #endif
 
-  predJOnHost = false; //Reset the buffers on the device since they can be modified
-  nj_updated = true;  //There are particles that are updated
+  predJOnHost  = false; //Reset the buffers on the device since they can be modified
+  nj_updated   = true;  //There are particles that are updated
   int storeLoc = -1;    //-1 if isFirstSend, otherwise it will give direct location in memory
 
   double4 temp4; 
@@ -251,7 +253,6 @@ int sapporo::set_j_particle(int    address,
   
   if(isFirstSend)
   {
-
     //Store particles in temporary vectors
     temp4.x = x[0]; temp4.y = x[1]; temp4.z = x[2]; temp4.w = mass;
     pos_j.push_back(temp4);
@@ -362,7 +363,6 @@ int sapporo::set_j_particle(int    address,
     }
     else
     {
-
       fprintf(stderr, "Setj ad: %d\tid: %d storeLoc: %d \tpos: %f %f %f\t mass: %f \tvel: %f %f %f", address, id, storeLoc, x[0],x[1],x[2],mass, v[0],v[1],v[2]);
       fprintf(stderr, "\tacc: %f %f %f \n", a2[0],a2[1],a2[2]);
       if(integrationOrder > FOURTH)
@@ -394,7 +394,7 @@ void sapporo::increase_jMemory()
 
   int temp2 = temp / nCUDAdevices;
   temp2++;
-  temp2 = temp2 * nCUDAdevices; //Total number of particles
+  temp2 = temp2 * nCUDAdevices; //Total number of particles spread over multiple devices
 
   nj_max = temp2;       //If address goes over nj_max we realloc
 
@@ -410,7 +410,7 @@ void sapporo::increase_jMemory()
 
     sapdevice->nj_local = nj_local;
 
-    int nj_max_local = nj_max / nCUDAdevices;
+    int nj_max_local    = nj_max / nCUDAdevices;
 
 
     cerr << "Before realloc : " << nj_max_local << "\tparticles" << std::endl; //TODO

@@ -92,7 +92,7 @@ protected:
   int nj_modified;     //Modified number of particles that has to be send to the device  
   int nj_max;          //Total number of allocated memory particles
   int nj_total;        //Total number of j particles in the system (same as nj max?)
-//   
+ 
 
   bool nj_updated;      //Indicates if there are updated j particles
   bool predJOnHost;     //Indicate if the predicted J-particles are on the host or not
