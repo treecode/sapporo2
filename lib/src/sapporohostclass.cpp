@@ -285,6 +285,26 @@ int sapporo::set_j_particle(int    address,
       deviceList[dev]->crk_j_temp[storeLoc]        = make_double4(crk[0], crk[1], crk[2], 0.0);
     }
   }
+  
+
+  #ifdef CPU_SUPPORT
+    deviceList[dev]->pos_j[devAddr] = make_double4(x[0], x[1], x[2], mass);
+    
+    if(integrationOrder > GRAPE5)
+    {
+      deviceList[dev]->t_j[devAddr]          = make_double2(tj, dtj);
+      deviceList[dev]->vel_j[devAddr]        = make_double4(v[0], v[1], v[2], eps);
+      deviceList[dev]->acc_j[devAddr]        = make_double4(a2[0], a2[1], a2[2], 0.0);
+      deviceList[dev]->jrk_j[devAddr]        = make_double4(j6[0], j6[1], j6[2], 0.0);
+      deviceList[dev]->id_j[devAddr]         = id;
+      //For 6th and 8 order we need more parameters
+      if(integrationOrder > FOURTH)
+      {
+        deviceList[dev]->snp_j[devAddr]        = make_double4(snp[0], snp[1], snp[2], 0.0);
+        deviceList[dev]->crk_j[devAddr]        = make_double4(crk[0], crk[1], crk[2], 0.0);
+      }
+    }  
+  #endif
 
 
   #ifdef DEBUG_PRINT

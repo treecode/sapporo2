@@ -20,6 +20,11 @@
 
 
 
+//Enable this define to let smallN be handled by CPU
+#define CPU_SUPPORT
+
+
+
 //GPU config configuration
 #ifndef NBLOCKS_PER_MULTI
 
