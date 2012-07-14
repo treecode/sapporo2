@@ -61,27 +61,14 @@ inline double to_double(DS a) {
   return b;
 }
 
-
-
-struct memPointerJstruct
+struct jCopyInfo
 {
-//   int     *address;
-//   double2 *t_j;
-//   double4 *pos_j;
-//   double4 *vel_j;
-//   double4 *acc_j;       //Acceleration
-//   double4 *jrk_j;       //Jerk
-//   double4 *snp_j;       //Snap
-//   double4 *crk_j;       //Crack
-//   int     *id_j;  
   int     count;
   int     toCopy;
-} typedef memPointerJstruct;
+} typedef jCopyInfo;
 
 
-double get_time();
 
-  
 class sapporo {
 protected:
    
@@ -106,7 +93,7 @@ protected:
   
   double t_i;
   
-  vector<memPointerJstruct> jMemAddresses;
+  vector<jCopyInfo> jCopyInformation;
   
   
   bool ngb_list_copied;
@@ -142,15 +129,6 @@ public:
 
     ngb_list_copied = false;
     
-    //Clear the J particles
-//     address_j.clear();    
-//     t_j.clear();
-//     pos_j.clear();
-//     vel_j.clear();
-//     acc_j.clear();
-//     jrk_j.clear();
-//     id_j.clear();
-    
     predict     = false;
     isFirstSend = true;
     nj_updated  = false;
@@ -158,8 +136,6 @@ public:
     
     integrationOrder            = FOURTH;
     integrationPrecision        = DEFAULT;
-    
-
   };
   ~sapporo() {
      cleanUpDevice();
@@ -203,25 +179,25 @@ public:
                      double pot[],        int nnbindex[],
                      double dsmin_i[],    bool ngb);
                      
-    void forcePrediction(int nj);            
-    void retrieve_predicted_j_particle(int addr,       double &mass, 
-                                      double &id,     double &eps2,
-                                      double pos[3],  double vel[3],
-                                      double acc[3]);
-                                      
-    void retrieve_j_particle_state(int addr,       double &mass, 
-                                  double &id,     double &eps2,
-                                  double pos[3],  double vel[3],
-                                  double acc[3],  double jrk[3], double ppos[3],
-                                  double pvel[3], double pacc[3]);
-    
-    int fetch_ngb_list_from_device(int);
-    int read_ngb_list(int);
-    int get_ngb_list(int cluster_id,
-                    int ipipe,
-                    int maxlength,
-                    int &nblen,
-                    int nbl[]);
+  void forcePrediction(int nj);            
+  void retrieve_predicted_j_particle(int addr,       double &mass, 
+                                    double &id,     double &eps2,
+                                    double pos[3],  double vel[3],
+                                    double acc[3]);
+                                    
+  void retrieve_j_particle_state(int addr,       double &mass, 
+                                double &id,     double &eps2,
+                                double pos[3],  double vel[3],
+                                double acc[3],  double jrk[3], double ppos[3],
+                                double pvel[3], double pacc[3]);
+  
+  int fetch_ngb_list_from_device(int);
+  int read_ngb_list(int);
+  int get_ngb_list(int cluster_id,
+                  int ipipe,
+                  int maxlength,
+                  int &nblen,
+                  int nbl[]);
 };
 
 #endif 

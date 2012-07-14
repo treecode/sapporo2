@@ -478,7 +478,7 @@ __kernel void dev_reduce_forces(__global double4 *acc_i,
  * Function that moves the (changed) j-particles
  * to the correct address location.
 */
-__kernel void dev_copy_particles(int nj, int nj_max,
+__kernel void dev_copy_particles(int nj, 
                                  __global             double4   *pos_j, 
                                  __global             double4   *pos_j_temp,
                                  __global             int       *address_j,

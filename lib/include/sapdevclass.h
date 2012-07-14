@@ -47,7 +47,7 @@ namespace sapporo2 {
       bool hasDevice;
       
       //Context related
-      dev::context    context;
+      dev::context    context;          
       
       //Number of multiprocessors and number of blocks per SM
       int nMulti;      
@@ -108,6 +108,8 @@ namespace sapporo2 {
       int nj_local;                     //Number of particles on this device
       
       int integrationOrder;             //Which integration algorithm do we use. Needed for shmem config
+     
+
 
     public:
       //Functions
@@ -124,7 +126,7 @@ namespace sapporo2 {
         cerr << "integrationOrder : " << integrationOrder << endl;        
         
         #ifdef __OPENCL_DEV__
-//           const int numPlatform = context.getPlatformInfo();
+          //int numPlatform = context.getPlatformInfo();
           context.getDeviceCount(CL_DEVICE_TYPE_GPU, 0);
         #else
           context.getDeviceCount();
@@ -178,19 +180,18 @@ namespace sapporo2 {
         predictKernel.setContext(context);
         evalgravKernel.setContext(context);
         reduceForces.setContext(context);
-	  
+
         copyJParticles.load_source(filename, "");
         predictKernel.load_source(filename, "");
         evalgravKernel.load_source(filename, "");
         reduceForces.load_source(filename, "");
-	  
+  
         cerr << "Kernel files found .. building compute kernels! \n";
   
         copyJParticles.create("dev_copy_particles");
         predictKernel.create("dev_predictor");
         evalgravKernel.create("dev_evaluate_gravity");
         reduceForces.create("dev_reduce_forces");
-        
        
         return 0;
       }
@@ -203,24 +204,24 @@ namespace sapporo2 {
   
        
         //J-particle allocation
-        pPos_j.allocate(nj, false);                    
-        pos_j.allocate(nj, false);   
-        address_j.allocate(nj, false);      
+        pPos_j.allocate(nj,     false);                    
+        pos_j.allocate(nj,      false);   
+        address_j.allocate(nj,  false);      
         
 
         if(integrationOrder > GRAPE5)
         {
-          acc_j.allocate(nj, false);
-          jrk_j.allocate(nj, false); 
-          id_j.allocate(nj, false);
-          t_j.allocate(nj, false);       
-          vel_j.allocate(nj, false); 
-          pVel_j.allocate(nj, false);
+          acc_j.allocate(nj,    false);
+          jrk_j.allocate(nj,    false); 
+          id_j.allocate(nj,     false);
+          t_j.allocate(nj,      false);       
+          vel_j.allocate(nj,    false); 
+          pVel_j.allocate(nj,   false);
         
           if(integrationOrder > FOURTH)
           {
-            snp_j.allocate(nj, false);    
-            crk_j.allocate(nj, false); 
+            snp_j.allocate(nj,  false);    
+            crk_j.allocate(nj,  false); 
             pAcc_j.allocate(nj, false); 
           }
         }
@@ -231,29 +232,28 @@ namespace sapporo2 {
 
         if(integrationOrder > GRAPE5)
         {
-          t_j_temp.allocate(nj, false);         id_j_temp.allocate(nj, false);  
-          acc_j_temp.allocate(nj, false);       jrk_j_temp.allocate(nj, false); 
-          vel_j_temp.allocate(nj, false); 
+          t_j_temp.allocate(nj,    false);       id_j_temp.allocate(nj,  false);  
+          acc_j_temp.allocate(nj,  false);       jrk_j_temp.allocate(nj, false); 
+          vel_j_temp.allocate(nj,  false); 
         
           if(integrationOrder > FOURTH)
           {
-            snp_j_temp.allocate(nj, false);       crk_j_temp.allocate(nj, false); 
+            snp_j_temp.allocate(nj, false);      crk_j_temp.allocate(nj, false); 
           }                
         }
         
         //i particle TODO copied it from sap1, need to check how and why
         //TODO make this pinned memory since the communicate with the host
-        pos_i.allocate(n_pipes, false);   
-        
-        acc_i.allocate(n_pipes *      NBLOCKS, false, false);   
+        pos_i.allocate  (n_pipes             , false);   
+        acc_i.allocate  (n_pipes *    NBLOCKS, false, false);   
         accin_i.allocate(n_pipes *    NBLOCKS, false, false);   
 
         if(integrationOrder > GRAPE5)
         {
           vel_i.allocate(n_pipes * (1 + NBLOCKS), false);   
-          jrk_i.allocate(n_pipes *      NBLOCKS, false);
-          id_i.allocate (n_pipes *      NBLOCKS, false);   
-          ds_i.allocate(n_pipes, false);             
+          jrk_i.allocate(n_pipes *      NBLOCKS,  false);
+          id_i.allocate (n_pipes *      NBLOCKS,  false);   
+          ds_i.allocate(n_pipes                ,  false);             
       
           if(integrationOrder > FOURTH)
           {
@@ -272,10 +272,15 @@ namespace sapporo2 {
       
       int reallocJParticles(int nj)
       {
+        const int  flags    = 0;
+        const bool copyBack = false;   //Host content is newer than device so no copy
         //J-particle allocation
-        pPos_j.realloc(nj, false);  
-        pos_j.realloc(nj, false);       
-        address_j.realloc(nj, false, false);  //Host content is newer than device so no copy
+        pPos_j.realloc   (nj, flags);  
+        pos_j.realloc    (nj, flags);       
+        address_j.realloc(nj, flags, copyBack);
+        
+//         Hier gebleven met opruimn
+        
         if(integrationOrder > GRAPE5)
         {
           pVel_j.realloc(nj, false);

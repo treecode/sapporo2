@@ -4,6 +4,17 @@ struct real3 {
   double x, y, z;
 };
 
+double get_time() {
+  struct timeval Tvalue;
+  struct timezone dummy;
+
+  gettimeofday(&Tvalue,&dummy);
+  return ((double) Tvalue.tv_sec +
+          1.e-6*((double) Tvalue.tv_usec));
+}
+
+
+
 int main(int argc, char *argv[]) {
   int n = 1024;
   if (argc > 1) n = atoi(argv[1]);
@@ -24,6 +35,7 @@ int main(int argc, char *argv[]) {
   int    *nngb  = new int[n];
   int    *ngb_list = new int[n];
   int    *id   = new int[n];
+  
 
   double tm = 0;
   for (int i = 0; i < n; i++) {
@@ -369,4 +381,22 @@ exit(0);
 
  
   cerr << "done!\n";
+  
+  
+  delete[] pos;
+  delete[] vel;
+  delete[] acc;
+  delete[] jrk;
+  delete[] pot;
+  delete[] mass;
+  delete[] nnb;
+  delete[] h2;
+  delete[] nngb;
+  delete[] ngb_list;
+  delete[] id;  
+  delete[] accx;  
+  delete[] jrkx;  
+  delete[] potx;    
+
+  
 }

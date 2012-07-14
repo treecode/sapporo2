@@ -280,8 +280,9 @@ namespace dev {
       setContext(x.get_context(), x.get_command_queue());
       allocate(_n, flags);
     }
-    ~memory() {cuda_free();}
-
+    ~memory() {
+      cuda_free();
+    }
 
     void setContext(const context &c) { setContext(c.get_context(), c.get_command_queue());  }
 
@@ -312,7 +313,7 @@ namespace dev {
       assert(ContextFlag);
       
       DeviceMemFlags = flags; //make compiler happy
-
+      
       if(_n != n  && _n > 0)
       {
         //We want more memory, increase size on host, copy
@@ -546,7 +547,7 @@ namespace dev {
     int computeMode;
     
     int CommandQueue; //Note this variable is not used only to prevent compiler warnings
-
+    
     void clean() {
       KernelName     = (char*)malloc(256);
       KernelFilename = (char*)malloc(1024);

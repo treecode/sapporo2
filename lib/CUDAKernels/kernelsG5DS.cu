@@ -239,7 +239,7 @@ extern "C" __global__ void dev_reduce_forces(
  * Function that moves the (changed) j-particles
  * to the correct address location.
 */
-extern "C" __global__ void dev_copy_particles(int nj, int nj_max,                                                                                        
+extern "C" __global__ void dev_copy_particles(int nj,                                                                                       
                                               double4   *pos_j, 
                                               double4   *pos_j_temp,
                                               int       *address_j) {

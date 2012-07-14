@@ -438,7 +438,6 @@ extern "C" __global__ void dev_reduce_forces(double4 *acc_i,
  * to the correct address location.
 */
 extern "C" __global__ void dev_copy_particles(int nj, 
-                                              int nj_max,
                                               double4   *pos_j, 
                                               double4   *pos_j_temp,
                                               int       *address_j,
