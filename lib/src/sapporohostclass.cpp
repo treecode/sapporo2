@@ -38,7 +38,7 @@ static __inline__ int4 make_int4(int x, int y, int z, int w)
 
 
 
-double get_time() {
+double __inline__ get_time() {
   struct timeval Tvalue;
   struct timezone dummy;
 
