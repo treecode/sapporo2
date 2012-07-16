@@ -3,14 +3,24 @@
 
 #include <string>
 
-// #define DEBUG_PRINT
+#define DEBUG_PRINT
 
-//GPU configuration settings
 
 //Neighbour information
 #define NGB_PP 256
 #define NGB_PB 256
 #define NGB
+
+
+#ifndef NPIPES
+#define NPIPES        256
+#endif
+
+#ifndef NTHREADS
+#define NTHREADS      256
+#endif
+
+
 
 //The next line will enable some extra hand tuned block-size
 //optimizations. But this can be device/resource dependend and 
@@ -61,24 +71,6 @@ inline int getBlocksPerSM(int devMajor, int devMinor, string deviceName)
   return NBLOCKS_PER_MULTI; //Some Makefile default
 }
 #endif
-
-
-
-
-
-
-
-
-
-
-#ifndef NPIPES
-#define NPIPES        256
-#endif
-
-#ifndef NTHREADS
-#define NTHREADS      256
-#endif
-
 
 
 

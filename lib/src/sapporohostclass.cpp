@@ -486,7 +486,7 @@ int sapporo::getGravResults(int nj, int ni,
   //Prevent unused compiler warning    
   nj = nj; index = index; xi = xi; vi = vi; eps2 = eps2; h2 = h2;
   
-  double ds_min[NTHREADS];
+  double ds_min[NPIPES];
   for (int i = 0; i < ni; i++) {
     pot[i] = acc[i][0]  = acc[i][1]  = acc[i][2]  = 0;
     if(integrationOrder > GRAPE5)
@@ -514,7 +514,7 @@ int sapporo::getGravResults(int nj, int ni,
   //Reduce the data from the different devices into one final results
   for (int dev = 0; dev < nCUDAdevices; dev++) {
     for (int i = 0; i < ni; i++) {
-
+      
       pot[i]    += deviceList[dev]->accin_i[i].w;
       acc[i][0] += deviceList[dev]->accin_i[i].x;
       acc[i][1] += deviceList[dev]->accin_i[i].y;
@@ -555,6 +555,7 @@ int sapporo::getGravResults(int nj, int ni,
 
     }
   }
+  
 
   return 0;
 };
@@ -606,7 +607,7 @@ int sapporo::get_ngb_list(int cluster_id,
 //     exit(-1);
 //   }
  #ifdef DEBUG_PRINT
-  fprintf(stderr, "get_ngb_list\n");
+  fprintf(stderr, "get_ngb_list ipipe: %d\n", ipipe);
  #endif
 
 
@@ -614,9 +615,11 @@ int sapporo::get_ngb_list(int cluster_id,
   nblen         = 0;
   for (int i = 0; i < nCUDAdevices; i++) {
     int offset  = NGB_PP*ipipe;
-    int len     = deviceList[i]->ngb_list_i[offset];
+    int len     = deviceList[i]->ngb_count_i[ipipe];
     
-    memcpy(nbl+nblen, &deviceList[i]->ngb_list_i[offset+1], sizeof(int)*min(len, maxlength - len));
+    fprintf(stderr, "nblen: %d  offset: %d maxlength: %d len: %d \n",
+            nblen, offset, maxlength, len);
+    memcpy(nbl+nblen, &deviceList[i]->ngb_list_i[offset], sizeof(int)*min(len, maxlength - len));
     nblen += len;
     if (nblen >= maxlength) {
       overflow = true;
@@ -915,7 +918,9 @@ int sapporo::fetch_ngb_list_from_device() {
 
   //Copy only the active ni particles  
   int ni = sapdevice->dev_ni;
-  sapdevice->ngb_list_i.d2h(ni*NGB_PP, NTHREADS*NGB_PB*(sapdevice->get_NBLOCKS()));
+//   sapdevice->ngb_list_i.d2h(ni*NGB_PP, NTHREADS*NGB_PB*(sapdevice->get_NBLOCKS()));
+  sapdevice->ngb_count_i.d2h(ni);
+  sapdevice->ngb_list_i.d2h(ni*NGB_PP);
 
   return ni;
 }
@@ -1049,11 +1054,11 @@ void sapporo::predictJParticles(int nj)
 }
 
 
-double sapporo::evaluate_gravity(int ni, int nj)
+double sapporo::evaluate_gravity(int ni_total, int nj)
 {
   //This function is called inside an omp parallel section  
   #ifdef DEBUG_PRINT
-    cerr << "evaluate_gravity ni: " << ni << "\tnj: " << nj << endl;
+    cerr << "evaluate_gravity ni: " << ni_total << "\tnj: " << nj << endl;
   #endif
 
   //ni is the number of i-particles that is set and for which we compute the force
@@ -1066,184 +1071,210 @@ double sapporo::evaluate_gravity(int ni, int nj)
   //Execute prediction if necessary
   predictJParticles(nj);
 
-  //Setting the properties for the gravity kernel
-
-  //Calculate the number of blocks, groups, etc. For efficiency we always 
-  //launch a multiple number of blocks of the warpsize/wavefront size
-  int multipleSize = 1;
-  
-  if(integrationOrder <= FOURTH)
+   
+  int ni = 0;
+  //Loop over the ni-particles in jumps equal to the number of threads
+  for(int ni_offset = 0; ni_offset < ni_total; ni_offset += NTHREADS)
   {
-    //This is only possible for 4th order, the 6th order requires too many 
-    //resources to launch big thread-blocks. The get_workGroupMultiple 
-    //retrieves the warp/wavefront size
-    if(ni > 128)
-      multipleSize = sapdevice->evalgravKernel.get_workGroupMultiple();
-    else if(ni > 96)
-      multipleSize =  sapdevice->evalgravKernel.get_workGroupMultiple() / 2;
-  }
-  
-  //Force ni to be a multiple of the warp/wavefront size. Note we can let ni be a multiple
-  //since we ignore all results of non-used (non-requested) particles
-  int temp = ni / multipleSize; 
-  if((ni % multipleSize) != 0 ) temp++;
-  ni = temp * multipleSize;
-  
-
-  //Dimensions of one thread-block, this can be of the 2D form if there are multiple 
-  //y dimensions (q) with an x-dimension of p.
-  int p = ni;
-  int q = min(NTHREADS/ni, 32);
-  
-  //The above is the default and works all the time, we can do some extra device/algorithm
-  //specific tunings using the code below.
-  
-
-  //Set the amount of shared-memory and possibly improve the 2D block sizes 
-  //by using specific optimizations. 
-  //NOTE this is also device/resource dependend and can cause 'out of resource' crashes!!
-  
-  int sharedMemSizeEval   = 0;
-  int sharedMemSizeReduce = 0;
-  
-  if(integrationOrder == GRAPE5)
-  {
-    if(integrationPrecision == DEFAULT)
-    {
-      //Single Precision
-      sharedMemSizeEval    = p*q*(sizeof(float4)); //G5 Single precision
-      sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(sizeof(float4)); //G5 Single precision
-    }
-    if(integrationPrecision == DOUBLE)
-    {
-      //Double Single Precision      
-      sharedMemSizeEval    = p*q*(sizeof(DS4)); //G5 DS precision
-      sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(sizeof(float4)); //G5 DS precision (acc is SP)            
-    }        
-  }
-  
-  if(integrationOrder == FOURTH)
-  {
-    if(integrationPrecision == DEFAULT)
-    {
-      #ifdef ENABLE_THREAD_BLOCK_SIZE_OPTIMIZATION
-        //This is most optimal one for Fourth order Double-Single. 
-        if(ni <= 256 && ni >= 32)   
-          q = min(sapdevice->evalgravKernel.get_workGroupMaxSize()/ni, 32);      
-      #endif
-          
-      sharedMemSizeEval    = p*q*(sizeof(DS4) + sizeof(float4)); //4th order Double Single
-      sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(2*sizeof(float4) + 3*sizeof(int)); //4th DS  
-          
-    }
-    if(integrationPrecision == DOUBLE)
-    {
-      sharedMemSizeEval   = p*q*(sizeof(double4) + sizeof(double4) + sizeof(int)*2 + sizeof(double));
-      sharedMemSizeReduce = sapdevice->get_NBLOCKS()*(2*sizeof(double4) + 2*sizeof(int) + sizeof(double));
-    }
-  }
-  
-  if(integrationOrder == SIXTH)
-  {
-    //Only has a double precision version
-    sharedMemSizeEval =   p*q*(sizeof(double4) + sizeof(double4) + sizeof(double4) + sizeof(int)*2 + sizeof(double));
-    sharedMemSizeReduce = sapdevice->get_NBLOCKS()*(3*sizeof(double4) + 2*sizeof(int) + sizeof(double));   //6th order
-  }
-  
-  //q = 1; //Use this when testing optimal thread/block/multi size. Disables 2D thread-blocks  
+    ni = min(ni_total - ni_offset, NTHREADS);
+    fprintf(stderr, "Offset: %d  --> Total: %d Current step: %d \n", ni_offset, ni_total, ni);
     
-  //Compute the number of nj particles used per-block (note can have multiple blocks per thread-block in 2D case)
-  int nj_scaled       = n_norm(nj, q*(sapdevice->get_NBLOCKS()));
-  int thisBlockScaled = nj_scaled/((sapdevice->get_NBLOCKS())*q);
-  int nthreads        = NTHREADS;
-  
+    //Setting the properties for the gravity kernel
 
+    //Calculate the number of blocks, groups, etc. For efficiency we always 
+    //launch a multiple number of blocks of the warpsize/wavefront size
+    int multipleSize = 1;
+    
+    if(integrationOrder <= FOURTH)
+    {
+      //This is only possible for 4th order, the 6th order requires too many 
+      //resources to launch big thread-blocks. The get_workGroupMultiple 
+      //retrieves the warp/wavefront size
+      if(ni > 128)
+        multipleSize = sapdevice->evalgravKernel.get_workGroupMultiple();
+      else if(ni > 96)
+        multipleSize =  sapdevice->evalgravKernel.get_workGroupMultiple() / 2;
+    }
+    
+    //Force ni to be a multiple of the warp/wavefront size. Note we can let ni be a multiple
+    //since we ignore all results of non-used (non-requested) particles
+    int temp = ni / multipleSize; 
+    if((ni % multipleSize) != 0 ) temp++;
+    ni = temp * multipleSize;
+    
 
-  #ifdef DEBUG_PRINT
-    fprintf(stderr, "EvalGrav config: p: %d q: %d  nj: %d nj_scaled: %d thisblockscaled: %d nthreads: %d ni: %d EPS: %f \n",
-                    p,q,nj, nj_scaled, thisBlockScaled, nthreads, ni, EPS2);
-    fprintf(stderr, "Shared memory configuration, size eval: %d  \t size reduc: %d \n",
-                    sharedMemSizeEval, sharedMemSizeReduce);    
-  #endif
+    //Dimensions of one thread-block, this can be of the 2D form if there are multiple 
+    //y dimensions (q) with an x-dimension of p.
+    int p = ni;
+    int q = min(NTHREADS/ni, 32);
+    
+    //The above is the default and works all the time, we can do some extra device/algorithm
+    //specific tunings using the code below.
 
-
-  sapdevice->evalgravKernel.set_arg<int  >(0, &nj);      //Total number of j particles
-  sapdevice->evalgravKernel.set_arg<int  >(1, &thisBlockScaled);
-  sapdevice->evalgravKernel.set_arg<int  >(2, &nthreads);
-
-  if(integrationOrder == GRAPE5)
-  {
-    sapdevice->evalgravKernel.set_arg<void*>(3, sapdevice->pos_j.ptr());
-    sapdevice->evalgravKernel.set_arg<void*>(4, sapdevice->pos_i.ptr());
-    sapdevice->evalgravKernel.set_arg<void*>(5, sapdevice->accin_i.ptr());
-    sapdevice->evalgravKernel.set_arg<double>(6, &EPS2);
-    sapdevice->evalgravKernel.set_arg<int>(7, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
-  }
-  else
-  {
-    sapdevice->evalgravKernel.set_arg<void*>(3, sapdevice->pPos_j.ptr());
-    sapdevice->evalgravKernel.set_arg<void*>(4, sapdevice->pos_i.ptr());
-    sapdevice->evalgravKernel.set_arg<void*>(5, sapdevice->accin_i.ptr());
-    sapdevice->evalgravKernel.set_arg<double>(6, &EPS2);
-
-    sapdevice->evalgravKernel.set_arg<void*>(7,  sapdevice->pVel_j.ptr());
-    sapdevice->evalgravKernel.set_arg<void*>(8,  sapdevice->id_j.ptr());
-    sapdevice->evalgravKernel.set_arg<void*>(9,  sapdevice->vel_i.ptr());
-    sapdevice->evalgravKernel.set_arg<void*>(10, sapdevice->jrk_i.ptr());
-    sapdevice->evalgravKernel.set_arg<void*>(11, sapdevice->id_i.ptr());
-    sapdevice->evalgravKernel.set_arg<void*>(12, sapdevice->ngb_list_i.ptr());
+    //Set the amount of shared-memory and possibly improve the 2D block sizes 
+    //by using specific optimizations. 
+    //NOTE this is also device/resource dependend and can cause 'out of resource' crashes!!
+    
+    int sharedMemSizeEval   = 0;
+    int sharedMemSizeReduce = 0;
+    
+    if(integrationOrder == GRAPE5)
+    {
+      if(integrationPrecision == DEFAULT)
+      {
+        //Single Precision
+        sharedMemSizeEval    = p*q*(sizeof(float4)); //G5 Single precision
+        sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(sizeof(float4)); //G5 Single precision
+      }
+      if(integrationPrecision == DOUBLE)
+      {
+        //Double Single Precision      
+        sharedMemSizeEval    = p*q*(sizeof(DS4)); //G5 DS precision
+        sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(sizeof(float4)); //G5 DS precision (acc is SP)            
+      }        
+    }
+    
     if(integrationOrder == FOURTH)
-      sapdevice->evalgravKernel.set_arg<int>(13, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
-  }
+    {
+      if(integrationPrecision == DEFAULT)
+      {
+        #ifdef ENABLE_THREAD_BLOCK_SIZE_OPTIMIZATION
+          //This is most optimal one for Fourth order Double-Single. 
+          if(ni <= 256 && ni >= 32)   
+            q = min(sapdevice->evalgravKernel.get_workGroupMaxSize()/ni, 32);      
+        #endif
+            
+        sharedMemSizeEval    = p*q*(sizeof(DS4) + sizeof(float4)); //4th order Double Single
+        sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(2*sizeof(float4) + 3*sizeof(int)); //4th DS  
+            
+      }
+      if(integrationPrecision == DOUBLE)
+      {
+        sharedMemSizeEval   = p*q*(sizeof(double4) + sizeof(double4) + sizeof(int)*2 + sizeof(double));
+        sharedMemSizeReduce = sapdevice->get_NBLOCKS()*(2*sizeof(double4) + 2*sizeof(int) + sizeof(double));
+      }
+    }
+    
+    if(integrationOrder == SIXTH)
+    {
+      //Only has a double precision version
+      sharedMemSizeEval =   p*q*(sizeof(double4) + sizeof(double4) + sizeof(double4) + sizeof(int)*2 + sizeof(double));
+      sharedMemSizeReduce = sapdevice->get_NBLOCKS()*(3*sizeof(double4) + 2*sizeof(int) + sizeof(double));   //6th order
+    }
+    
+    //q = 1; //Use this when testing optimal thread/block/multi size. Disables 2D thread-blocks  
+    fprintf(stderr, "Test %d %d %d %d \n", ni, nj, q,  sapdevice->get_NBLOCKS());
+    //Compute the number of nj particles used per-block (note can have multiple blocks per thread-block in 2D case)
+    int nj_scaled       = n_norm(nj, q*(sapdevice->get_NBLOCKS()));
+    int thisBlockScaled = nj_scaled/((sapdevice->get_NBLOCKS())*q);
+    int nthreads        = NTHREADS;
+    
 
-  if(integrationOrder > FOURTH)
-  {
-    sapdevice->evalgravKernel.set_arg<void*>(13, sapdevice->pAcc_j.ptr());
-    sapdevice->evalgravKernel.set_arg<void*>(14, sapdevice->snp_i.ptr());
-    sapdevice->evalgravKernel.set_arg<int>(15, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
-  }
 
-  sapdevice->evalgravKernel.setWork_threadblock2D(p, q, (sapdevice->get_NBLOCKS()), 1); //Default
-  sapdevice->evalgravKernel.execute();
+    #ifdef DEBUG_PRINT
+      fprintf(stderr, "EvalGrav config: p: %d q: %d  nj: %d nj_scaled: %d thisblockscaled: %d nthreads: %d ni: %d EPS: %f \n",
+                      p,q,nj, nj_scaled, thisBlockScaled, nthreads, ni, EPS2);
+      fprintf(stderr, "Shared memory configuration, size eval: %d  \t size reduc: %d \n",
+                      sharedMemSizeEval, sharedMemSizeReduce);    
+    #endif
 
-  //Kernel reduce
-  nthreads        = (sapdevice->get_NBLOCKS());
-  int nblocks     = ni;
 
-  int tempNTHREADS  = NTHREADS;
-  int tempNGBOffset = NGB_PB*(sapdevice->get_NBLOCKS())*NTHREADS;
+    int argIdx = 0;
+    sapdevice->evalgravKernel.set_arg<int  >(argIdx++, &nj);      //Total number of j particles
+    sapdevice->evalgravKernel.set_arg<int  >(argIdx++, &thisBlockScaled);
+//     sapdevice->evalgravKernel.set_arg<int  >(argIdx++, &nthreads);
+    sapdevice->evalgravKernel.set_arg<int  >(argIdx++, &ni_offset);    
 
-  sapdevice->reduceForces.set_arg<void*>(0, sapdevice->accin_i.ptr());
-  if(integrationOrder == GRAPE5)
-  {
-    sapdevice->reduceForces.set_arg<int>(1, NULL, (sharedMemSizeReduce)/sizeof(int));  //Shared memory
-  }
-  if(integrationOrder > GRAPE5)
-  {
-    sapdevice->reduceForces.set_arg<void*>(1, sapdevice->jrk_i.ptr());
-    sapdevice->reduceForces.set_arg<void*>(2, sapdevice->ds_i.ptr());
-    sapdevice->reduceForces.set_arg<void*>(3, sapdevice->vel_i.ptr());
-    sapdevice->reduceForces.set_arg<int  >(4, &tempNTHREADS);  //offset_ds
-    sapdevice->reduceForces.set_arg<int  >(5, &tempNGBOffset);  //offset
-    sapdevice->reduceForces.set_arg<void*>(6, sapdevice->ngb_list_i.ptr());
-    if(integrationOrder == FOURTH)
-      sapdevice->reduceForces.set_arg<int>(7, NULL, (sharedMemSizeReduce)/sizeof(int));  //Shared memory
-  }
+    if(integrationOrder == GRAPE5)
+    {
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++, sapdevice->pos_j.ptr());
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++, sapdevice->pos_i.ptr());
+//       sapdevice->evalgravKernel.set_arg<void*>(5, sapdevice->accin_i.ptr());
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++, sapdevice->acc_i_temp.ptr());
+      sapdevice->evalgravKernel.set_arg<double>(argIdx++, &EPS2);
+      sapdevice->evalgravKernel.set_arg<int>(argIdx++, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
+    }
+    else
+    {
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++,  sapdevice->pPos_j.ptr());
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++,  sapdevice->pos_i.ptr());
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++,  sapdevice->acc_i_temp.ptr());
+      sapdevice->evalgravKernel.set_arg<double>(argIdx++, &EPS2);
 
-  if(integrationOrder > FOURTH)
-  {
-    sapdevice->reduceForces.set_arg<void*>(7, sapdevice->snp_i.ptr());
-    sapdevice->reduceForces.set_arg<int>(8, NULL, (sharedMemSizeReduce)/sizeof(int));  //Shared memory
-  }
-  sapdevice->reduceForces.setWork_threadblock2D(nthreads, 1, nblocks, 1);
-  sapdevice->reduceForces.execute();
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++,  sapdevice->pVel_j.ptr());
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++,  sapdevice->id_j.ptr());
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++,  sapdevice->vel_i.ptr());
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++,  sapdevice->jrk_i_temp.ptr());
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++,  sapdevice->id_i.ptr());
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++,  sapdevice->ds2_min_i_temp.ptr());     
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++,  sapdevice->ngb_count_i_temp.ptr());
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++,  sapdevice->ngb_list_i_temp.ptr());
+
+      
+      if(integrationOrder == FOURTH)
+        sapdevice->evalgravKernel.set_arg<int>(argIdx++, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
+    }
+
+    if(integrationOrder > FOURTH)
+    {
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++, sapdevice->pAcc_j.ptr());
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++, sapdevice->snp_i.ptr());
+      sapdevice->evalgravKernel.set_arg<int>(argIdx++, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
+    }
+
+    sapdevice->evalgravKernel.setWork_threadblock2D(p, q, (sapdevice->get_NBLOCKS()), 1); //Default
+    sapdevice->evalgravKernel.execute();
+
+    //Kernel reduce
+    nthreads        = (sapdevice->get_NBLOCKS());
+    int nblocks     = ni;
+
+    int tempNTHREADS  = NTHREADS;
+    int tempNGBOffset = NGB_PB*(sapdevice->get_NBLOCKS())*NTHREADS;
+    
+    
+    argIdx = 0;
+
+    if(integrationOrder == GRAPE5)
+    {
+      sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->acc_i_temp.ptr());    
+      //TODO an pointer to acci out
+      sapdevice->reduceForces.set_arg<int>(argIdx++, NULL, (sharedMemSizeReduce)/sizeof(int));  //Shared memory
+    }
+    if(integrationOrder > GRAPE5)
+    {
+      sapdevice->reduceForces.set_arg<void*>(argIdx++,  sapdevice->acc_i_temp.ptr());
+      sapdevice->reduceForces.set_arg<void*>(argIdx++,  sapdevice->jrk_i_temp.ptr());
+      sapdevice->reduceForces.set_arg<void*>(argIdx++,  sapdevice->ds2_min_i_temp.ptr());
+      sapdevice->reduceForces.set_arg<void*>(argIdx++,  sapdevice->ngb_count_i_temp.ptr());
+      sapdevice->reduceForces.set_arg<void*>(argIdx++,  sapdevice->ngb_list_i_temp.ptr());
+      
+      sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->accin_i.ptr());
+      sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->jrk_i.ptr());
+      sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->ds_i.ptr());
+      sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->ngb_count_i.ptr());
+      sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->ngb_list_i.ptr());
+      
+//       sapdevice->reduceForces.set_arg<int  >(argIdx++, &tempNGBOffset);  //offset      
+      sapdevice->reduceForces.set_arg<int  >(argIdx++, &ni_offset);  //offset     
+      if(integrationOrder == FOURTH)
+        sapdevice->reduceForces.set_arg<int>(argIdx++, NULL, (sharedMemSizeReduce)/sizeof(int));  //Shared memory
+    }
+
+    if(integrationOrder > FOURTH)
+    {
+      sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->snp_i.ptr());
+      sapdevice->reduceForces.set_arg<int>(argIdx++, NULL, (sharedMemSizeReduce)/sizeof(int));  //Shared memory
+    }
+    sapdevice->reduceForces.setWork_threadblock2D(nthreads, 1, nblocks, 1);
+    sapdevice->reduceForces.execute();
+    
+    
+    
+
+  } //Loop over ni
+
 
   return 0.0;
 } //end evaluate gravity
-
-
-
-
-
-
 

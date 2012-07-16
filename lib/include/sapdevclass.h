@@ -101,8 +101,26 @@ namespace sapporo2 {
       dev::memory<double4> crk_i;        //Crack for 6th and 8th order
       dev::memory<double>  ds_i;         //minimal distance
       dev::memory<int>     id_i;         //particle id
+      dev::memory<int>     ngb_count_i;  //neighbour count
+      dev::memory<int>     ngb_list_i;   //neighbour list
       
-      dev::memory<int>   ngb_list_i;  //neighbour list
+      
+      //Temporary results for the i-particles, NOTE we re-use
+      //the temporary j-particle buffers:
+      //acc_j_temp  --> acc_i_temp
+      //jrk_j_temp  --> jrk_i_temp
+      //storage for ds2min vel_j_temp --> ds2_min
+      //snap_j_temp --> snp_i_temp
+      //ngb_list_i ---> ??
+      //id_j_temp  ---> ngb_count_i_temp
+      dev::memory<double4> acc_i_temp;
+      dev::memory<double4> jrk_i_temp;
+      dev::memory<double4>  ds2_min_i_temp; //Double4 so we can reuse memory
+      dev::memory<double4> snp_i_temp;
+      dev::memory<int>     ngb_count_i_temp; 
+      dev::memory<int>     ngb_list_i_temp;   //neighbour list
+   
+     
       
       int dev_ni;                       //Number of ni particles on the device
       int nj_local;                     //Number of particles on this device
@@ -167,8 +185,11 @@ namespace sapporo2 {
         acc_i.setContext(context);      jrk_i.setContext(context);
         ds_i.setContext(context);       ngb_list_i.setContext(context);
         id_i.setContext(context);       accin_i.setContext(context);
-        snp_i.setContext(context);      crk_i.setContext(context);        
+        snp_i.setContext(context);      crk_i.setContext(context);  
+        ngb_count_i.setContext(context);      
         
+        ngb_list_i_temp.setContext(context);      
+         
         return 0;
       }
       
@@ -202,6 +223,11 @@ namespace sapporo2 {
       {
         nj_local = nj;
   
+        int njExtraForPipes = nj;
+        //Required temporary memory items before reducing:  NTHREADS*NBLOCKS
+        if(NTHREADS*NBLOCKS > nj)
+          njExtraForPipes = NTHREADS*NBLOCKS;
+        
        
         //J-particle allocation
         pPos_j.allocate(nj,     false);                    
@@ -233,12 +259,15 @@ namespace sapporo2 {
         if(integrationOrder > GRAPE5)
         {
           t_j_temp.allocate(nj,    false);       id_j_temp.allocate(nj,  false);  
-          acc_j_temp.allocate(nj,  false);       jrk_j_temp.allocate(nj, false); 
-          vel_j_temp.allocate(nj,  false); 
+          
+          vel_j_temp.allocate(njExtraForPipes, false);           
+          acc_j_temp.allocate(njExtraForPipes, false);    
+          jrk_j_temp.allocate(njExtraForPipes, false); 
+                    
         
           if(integrationOrder > FOURTH)
           {
-            snp_j_temp.allocate(nj, false);      crk_j_temp.allocate(nj, false); 
+            snp_j_temp.allocate(njExtraForPipes, false);      crk_j_temp.allocate(nj, false); 
           }                
         }
         
@@ -253,7 +282,10 @@ namespace sapporo2 {
           vel_i.allocate(n_pipes * (1 + NBLOCKS), false);   
           jrk_i.allocate(n_pipes *      NBLOCKS,  false);
           id_i.allocate (n_pipes *      NBLOCKS,  false);   
-          ds_i.allocate(n_pipes                ,  false);             
+          ds_i.allocate(n_pipes                ,  false);        
+          
+          ngb_count_i.allocate(n_pipes *      NBLOCKS,  false);
+          
       
           if(integrationOrder > FOURTH)
           {
@@ -263,11 +295,28 @@ namespace sapporo2 {
         }  
         
 
-//         int ngbMem =  (n_pipes*(NGB_PP + 1) + n_pipes*NBLOCKS*(NGB_PP+1)); //TODO check / change!
-        int ngbMem =  (NTHREADS*(NGB_PP + 1) + NTHREADS*NBLOCKS*(NGB_PP+1)); //TODO check / change!
-        ngb_list_i.allocate(ngbMem, false);   
+         int ngbMem =  (n_pipes*(NGB_PP + 1) + n_pipes*NBLOCKS*(NGB_PP+1)); //TODO check / change!
+//         int ngbMem =  (NTHREADS*(NGB_PP + 1) + NTHREADS*NBLOCKS*(NGB_PP+1)); //TODO check / change!
+        ngb_list_i.allocate(ngbMem*10, false);  
+        //TODO normal size
         
-       return 0;
+        ngb_list_i_temp.allocate(ngbMem, false);
+        
+        //acc_j_temp  --> acc_i_temp
+        //jrk_j_temp  --> jrk_i_temp
+        //storage for ds2min vel_j_temp --> ds2_min
+        //snap_j_temp --> snp_i_temp
+        //ngb_list_i
+
+        acc_i_temp        = acc_j_temp;
+        jrk_i_temp        = jrk_j_temp;
+        ds2_min_i_temp    = vel_j_temp;  
+        ngb_count_i_temp  = id_j_temp;
+        
+        snp_i_temp        = snp_j_temp; //6th and 8th order
+        
+        
+        return 0;
       }
       
       int reallocJParticles(int nj)
@@ -285,7 +334,7 @@ namespace sapporo2 {
         {
           pVel_j.realloc(nj, false);
         
-          t_j.realloc(nj, false);         id_j.realloc(nj, false);
+          t_j.realloc(nj,   false);         id_j.realloc(nj, false);
           vel_j.realloc(nj, false); 
           acc_j.realloc(nj, false);       jrk_j.realloc(nj, false); 
           if(integrationOrder > FOURTH)

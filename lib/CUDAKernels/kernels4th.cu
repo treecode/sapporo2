@@ -97,7 +97,7 @@ struct DS2 {
   DS x, y;
 };
 
-__device__ DS to_DS(double a) {
+__device__ __inline__ DS to_DS(double a) {
   DS b;
   b.x = (float)a;
   b.y = (float)(a - b.x);
@@ -227,16 +227,19 @@ extern "C" __global__ void
 dev_evaluate_gravity(
     const int        nj_total, 
     const int        nj,
-    const int        offset,
+//     const int        offset,
+    const int        ni_offset,
     const double4    *pos_j, 
     const double4    *pos_i,
     __out double4    *acc_i, 
     const double     EPS2_d,
     const double4    *vel_j,
     const int        *id_j,                                     
-    __out double4    *vel_i,                                     
+    const double4    *vel_i,                                     
     __out double4    *jrk_i,
     const int        *id_i,
+    __out double     *ds2min_i,
+    __out int        *ngb_count_i,
     __out int        *ngb_list) 
 {
 
@@ -256,17 +259,18 @@ dev_evaluate_gravity(
   const float EPS2 = (float)EPS2_d;
 
   DS4 pos;
-  pos.x = to_DS(pos_i[tx].x); 
-  pos.y = to_DS(pos_i[tx].y);
-  pos.z = to_DS(pos_i[tx].z);
-  pos.w = to_DS(pos_i[tx].w);
+  pos.x = to_DS(pos_i[tx+ni_offset].x); 
+  pos.y = to_DS(pos_i[tx+ni_offset].y);
+  pos.z = to_DS(pos_i[tx+ni_offset].z);
+  pos.w = to_DS(pos_i[tx+ni_offset].w);
 
 
   //Combine the particle id into the w part of the position
 //   pos.w.y = __int_as_float(id_i[tx]);
-  const int iID    = id_i[tx];
+  const int iID    = id_i[tx+ni_offset];
 
-  const float4 vel = (float4){vel_i[tx].x, vel_i[tx].y, vel_i[tx].z, vel_i[tx].w};
+  const float4 vel = make_float4(vel_i[tx+ni_offset].x, vel_i[tx+ni_offset].y,
+                                 vel_i[tx+ni_offset].z, vel_i[tx+ni_offset].w);
 
   const float LARGEnum = 1.0e10f;
 
@@ -368,8 +372,8 @@ dev_evaluate_gravity(
         ds2_min  = ds1;
       }
 
-      shared_ofs[addr] = min(n_ngb + 1, NGB_PB);
-      n_ngb += shared_ngb[addr];
+      shared_ofs[addr] = min(n_ngb, NGB_PB);
+      n_ngb           += shared_ngb[addr];
     }
     n_ngb  = min(n_ngb, NGB_PB);
   }
@@ -379,24 +383,31 @@ dev_evaluate_gravity(
   {
     //Convert results to double and write
     const int addr = bx*blockDim.x + tx;
-    vel_i[offset + addr].w = ds2_min;
+//     vel_i[offset + addr].w = ds2_min;
+    ds2min_i[      addr]   = ds2_min;
     acc_i[         addr]   = acc.to_double4();
     jrk_i[         addr]   = (double4){jrk.x, jrk.y, jrk.z, jrk.w};
+    ngb_count_i[   addr]   = n_ngb;
   }
 
 
   {
     //int offset  = threadIdx.x * NBLOCKS*NGB_PB + blockIdx.x * NGB_PB;
     int offset  = threadIdx.x * gridDim.x*NGB_PB + blockIdx.x * NGB_PB;
-    offset += shared_ofs[ajc(threadIdx.x, threadIdx.y)];
-
-    if (threadIdx.y == 0)
-      ngb_list[offset++] = n_ngb;
-
-    n_ngb = shared_ngb[ajc(threadIdx.x, threadIdx.y)];
+    offset     += shared_ofs[addr];
+    n_ngb       = shared_ngb[addr];
     for (int i = 0; i < n_ngb; i++) 
       ngb_list[offset + i] = local_ngb_list[i];
   }
+
+
+// if(blockIdx.x == 0)
+// {
+//   printf("ON DEV [x: %d y: %d %d %d %d]  offset:  %d  offset2: %d ngb: %d\n",
+// threadIdx.x, threadIdx.y, blockIdx.x, gridDim.x, NGB_PB, 
+// threadIdx.x * gridDim.x*NGB_PB + blockIdx.x * NGB_PB,
+// offset,shared_ngb[ajc(threadIdx.x, threadIdx.y)]);
+// }
 
 }
 
@@ -406,13 +417,19 @@ dev_evaluate_gravity(
  *  blockDim.x = #of block in previous kernel
  *  gridDim.x  = ni
  */ 
-extern "C" __global__ void dev_reduce_forces(double4 *acc_i, 
-    double4 *jrk_i,
-    double  *ds_i,
-    double4 *vel_i,
-    int     offset_ds,
-    int     offset,
-    int     *ngb_list) {
+extern "C" __global__ void dev_reduce_forces(
+    double4             *acc_i_temp, 
+    double4             *jrk_i_temp,
+    double              *ds_i_temp,
+    int                 *ngb_count_i_temp,
+    int                 *ngb_list_i_temp,
+    __out double4    *acc_i, 
+    __out double4    *jrk_i, 
+    __out double     *ds_i,
+    __out int        *ngb_count_i,
+    __out int        *ngb_list,
+    int               offset_ni_idx
+) {
   //  extern __shared__ float4 shared_acc[];
   //   __shared__ char shared_mem[NBLOCKS*(2*sizeof(float4) + 3*sizeof(int))];
   //   float4* shared_acc = (float4*)&shared_mem;
@@ -423,11 +440,6 @@ extern "C" __global__ void dev_reduce_forces(double4 *acc_i,
 //   __shared__ int        shared_ofs[NBLOCKS];
 //   __shared__ float      shared_ds[NBLOCKS];
 
-//   __shared__ float4     shared_acc[blockDim.x];
-//   __shared__ float4     shared_jrk[blockDim.x];
-//   __shared__ int        shared_ngb[blockDim.x];
-//   __shared__ int        shared_ofs[blockDim.x];
-//   __shared__ float      shared_ds[blockDim.x];
 
   extern __shared__ float4 shared_acc[];
   float4 *shared_jrk = (float4*)&shared_acc[blockDim.x];
@@ -439,14 +451,16 @@ extern "C" __global__ void dev_reduce_forces(double4 *acc_i,
 
 
   //Convert the data to floats
-  shared_acc[threadIdx.x] = (float4){acc_i[index].x, acc_i[index].y, acc_i[index].z, acc_i[index].w};
-  shared_jrk[threadIdx.x] = (float4){jrk_i[index].x, jrk_i[index].y, jrk_i[index].z, jrk_i[index].w};
-  shared_ds [threadIdx.x] = (float)vel_i[offset_ds + index].w;  //TODO JB dont we miss the value at vel_i[0 + x] this way?
+  shared_acc[threadIdx.x] = (float4){acc_i_temp[index].x, acc_i_temp[index].y, acc_i_temp[index].z, acc_i_temp[index].w};
+  shared_jrk[threadIdx.x] = (float4){jrk_i_temp[index].x, jrk_i_temp[index].y, jrk_i_temp[index].z, jrk_i_temp[index].w};
+//   shared_ds [threadIdx.x] = (float)vel_i[offset_ds + index].w;  //TODO JB dont we miss the value at vel_i[0 + x] this way?
+  shared_ds [threadIdx.x] = (float)ds_i_temp[index];  
 
 
-//   int ngb_index = threadIdx.x * NGB_PB + blockIdx.x * NGB_PB*NBLOCKS;
-  int ngb_index = threadIdx.x * NGB_PB + blockIdx.x * NGB_PB*blockDim.x;
-  shared_ngb[threadIdx.x] = ngb_list[ngb_index];
+//   int ngb_index = threadIdx.x * NGB_PB + blockIdx.x * NGB_PB*blockDim.x;
+
+
+  shared_ngb[threadIdx.x] = ngb_count_i_temp[index];
   shared_ofs[threadIdx.x] = 0;
 
   __syncthreads();
@@ -473,8 +487,8 @@ extern "C" __global__ void dev_reduce_forces(double4 *acc_i,
         jrk0.w = shared_jrk[i].w;
       }
 
-      shared_ofs[i] = min(n_ngb + 1, NGB_PP);
-      n_ngb += shared_ngb[i];
+      shared_ofs[i] = min(n_ngb, NGB_PP);
+      n_ngb        += shared_ngb[i];
 
     }
     n_ngb = min(n_ngb, NGB_PP);
@@ -482,28 +496,32 @@ extern "C" __global__ void dev_reduce_forces(double4 *acc_i,
     jrk0.w = (int)__float_as_int(jrk0.w);
 
     //Store the results
-    acc_i[blockIdx.x] = (double4){acc0.x, acc0.y, acc0.z, acc0.w};
-    jrk_i[blockIdx.x] = (double4){jrk0.x, jrk0.y, jrk0.z, jrk0.w};;
-    ds_i [blockIdx.x] = ds0;
+
+    acc_i       [blockIdx.x + offset_ni_idx] = (double4){acc0.x, acc0.y, acc0.z, acc0.w};
+    jrk_i       [blockIdx.x + offset_ni_idx] = (double4){jrk0.x, jrk0.y, jrk0.z, jrk0.w};;
+    ds_i        [blockIdx.x + offset_ni_idx] = (double) ds0;
+    ngb_count_i [blockIdx.x + offset_ni_idx] = n_ngb;
+
   }
   __syncthreads();
 
-  offset += blockIdx.x * NGB_PP + shared_ofs[threadIdx.x];
-  int offset_end;
-  if (threadIdx.x == 0) {
-    shared_ofs[0] = offset + NGB_PP;
-    ngb_list[offset++] = n_ngb;
-  }
-  __syncthreads();
 
-  offset_end = shared_ofs[0];
+  //Compute the offset of where to store the data and where to read it from
+  //Store is based on ni, where to read it from is based on thread/block
+  int offset     = (offset_ni_idx * blockIdx.x)  * NGB_PP + shared_ofs[threadIdx.x];
+  int offset_end = (offset_ni_idx * blockIdx.x)  * NGB_PP + NGB_PP;
+  int ngb_index  = threadIdx.x * NGB_PB + blockIdx.x * NGB_PB*blockDim.x;
+
 
   n_ngb = shared_ngb[threadIdx.x];
-
+  __syncthreads();
   for (int i = 0; i < n_ngb; i++)
+  {
     if (offset + i < offset_end){
-      ngb_list[offset + i] = ngb_list[ngb_index + 1 + i];
+      ngb_list[offset + i] = ngb_list_i_temp[ngb_index + i];
     }
+  }
+
 
 }
 
@@ -613,6 +631,7 @@ extern "C" __global__ void dev_predictor(int nj,
   }
   __syncthreads();
 }
+
 
 
 

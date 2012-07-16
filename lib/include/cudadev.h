@@ -243,18 +243,23 @@ namespace dev {
     std::vector<T> HostMem;
     
     T           *HostMemPinned;
+    
+    bool *memSet;       //Trick to prevent double crashes if memory is shared
 
     void cuda_free() {
-      if (n > 0) {
+      if (n > 0 && memSet[0]) {
 	assert(ContextFlag);
+
 	cuSafeCall(cuMemFree(DeviceMem));
 	HostMem.clear();
         HostMem.resize(0);
         if(pinned)
         {
           cuSafeCall(cuMemFreeHost((void*)HostMemPinned));
+          HostMemPinned = NULL;
         }
-	n = 0;
+	n         = 0;
+        memSet[0] = false;
       }
     }
 
@@ -290,6 +295,9 @@ namespace dev {
 
     void allocate(const int _n, const int flags = 0, bool pinned = false) {
       assert(ContextFlag);
+      
+      memSet = new bool[1];
+      memSet[0] = true;
 
       if (n > 0) cuda_free();
       n = _n;
@@ -892,7 +900,7 @@ namespace dev {
 
 
 
-//       #define DEBUG_PRINT
+      #define DEBUG_PRINT
       #ifdef DEBUG_PRINT
         CUevent start,stop;
 
@@ -951,7 +959,7 @@ namespace dev {
     
     
     void wait() const {
-      cudaThreadSynchronize();
+      cuCtxSynchronize();
       CUT_CHECK_ERROR("oops...");
     }
 

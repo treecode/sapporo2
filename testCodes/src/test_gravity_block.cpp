@@ -134,7 +134,7 @@ int main(int argc, char *argv[]) {
 			eps2, h2,
 			acc+i, jrk+i,NULL, NULL, pot+i, nnb+i, NULL, true);
                         
-     for(int j=0; j < ipmax; j++){
+     for(int j=i; j < i+npart; j++){
      printf("calchalf2: %d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\n", j,
             acc[j][0], acc[j][1], acc[j][2],
             pot[j], jrk[j][0],
@@ -190,8 +190,8 @@ int main(int argc, char *argv[]) {
 		 }
 	 }
        }
-exit(0);                        
-*/
+exit(0);   */                     
+
   }
 
 //  cerr << "After last half \n";  exit(0);
@@ -250,19 +250,19 @@ exit(0);
        exit(0);  */
                          
                          
-      grav.read_ngb_list(cluster_id);
-      for (int i1 = i; i1 < i + npart; i1++) {
-	grav.get_ngb_list(cluster_id,
-			  i1 - i,
-			  n,
-			  nngb[i1],
-			  ngb_list);
+//       grav.read_ngb_list(cluster_id);
+//       for (int i1 = i; i1 < i + npart; i1++) {
+// 	grav.get_ngb_list(cluster_id,
+// 			  i1 - i,
+// 			  n,
+// 			  nngb[i1],
+// 			  ngb_list);
 //   	fprintf(stderr," ipipe= %d: n_ngb= %d\n", i1 - i, nngb[i1]);
 //         for(int Z=0; Z < nngb[i1]; Z++)
 //         {
 //           fprintf(stderr,"%d\t%d\n", Z, ngb_list[Z]);
 //         }
-      }
+//       }
     }
     
 //     exit(0);
@@ -361,9 +361,9 @@ exit(0);
 	    sqrt((dj.x*dj.x + dj.y*dj.y+dj.z*dj.z)/(jrkx[i][0]*jrkx[i][0] + jrkx[i][1]*jrkx[i][1]+ jrkx[i][2]*jrkx[i][2])),
 	    fabs(dpot)/potx[i]);
 
-//     fprintf(stdout, "%g %g %g  %g %g %g  %g\n",
-// 	    acc[i][0], acc[i][1], acc[i][2],
-// 	    jrk[i][0], jrk[i][1], jrk[i][2], pot[i]);
+    fprintf(stdout, "%g %g %g  %g %g %g  %g\n",
+	    acc[i][0], acc[i][1], acc[i][2],
+	    jrk[i][0], jrk[i][1], jrk[i][2], pot[i]);
 //     double a = pot[i];
 //     double b = potx[i];
 //     fprintf(stdout, " %g %g %g \n",
