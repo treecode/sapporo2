@@ -12,15 +12,6 @@ double get_time() {
           1.e-6*((double) Tvalue.tv_usec));
 }
 
-double get_time() {
-  struct timeval Tvalue;
-  struct timezone dummy;
-
-  gettimeofday(&Tvalue,&dummy);
-  return ((double) Tvalue.tv_sec +
-          1.e-6*((double) Tvalue.tv_usec));
-}
-
 
 int main(int argc, char *argv[]) {
   int n = 1024;
