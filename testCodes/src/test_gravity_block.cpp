@@ -61,7 +61,7 @@ int main(int argc, char *argv[]) {
   
   sapporo grav;
   
-  int cluster_id = 0;
+//   int cluster_id = 0;
 
   int devices[] = {0,1,2,3};
 
@@ -99,6 +99,7 @@ int main(int argc, char *argv[]) {
   int ipmax = grav.get_n_pipes();
 //   double *i_nene = new double[ipmax];
 
+  ipmax = min(n, ipmax);
 
   double null3[3] = {0,0,0};
   for (int i = 0; i < n; i++) {
@@ -118,6 +119,8 @@ int main(int argc, char *argv[]) {
   double eps2 = 0.0;
   n1 = 0;
   n2 = 2*ipmax;
+  n2 = n;
+#if 1
   for (int i = n1; i < n2; i += ipmax) {
     int npart = min(n2 - i, ipmax);
     
@@ -175,7 +178,7 @@ int main(int argc, char *argv[]) {
 //      exit(0);
     
 //      exit(0);
-/*       grav.read_ngb_list(cluster_id);
+ /*      grav.read_ngb_list(cluster_id);
        for (int i1 = i; i1 < i + npart; i1++) {
          grav.get_ngb_list(cluster_id,
                            i1 - i,
@@ -193,7 +196,9 @@ int main(int argc, char *argv[]) {
 exit(0);   */                     
 
   }
-
+  
+#endif
+// exit(0);
 //  cerr << "After last half \n";  exit(0);
 
   for (int kk = 0; kk < 1; kk++) {
@@ -227,7 +232,7 @@ exit(0);   */
       int npart = min(n2 - i, ipmax);
       
 //       int ntest = n-2;
-   int ntest = n;   
+      int ntest = n;   
       grav.startGravCalc(ntest, npart,
 			  id + i,
 			  pos+i, vel+i,
@@ -361,9 +366,9 @@ exit(0);   */
 	    sqrt((dj.x*dj.x + dj.y*dj.y+dj.z*dj.z)/(jrkx[i][0]*jrkx[i][0] + jrkx[i][1]*jrkx[i][1]+ jrkx[i][2]*jrkx[i][2])),
 	    fabs(dpot)/potx[i]);
 
-    fprintf(stdout, "%g %g %g  %g %g %g  %g\n",
-	    acc[i][0], acc[i][1], acc[i][2],
-	    jrk[i][0], jrk[i][1], jrk[i][2], pot[i]);
+//     fprintf(stdout, "%g %g %g  %g %g %g  %g\n",
+// 	    acc[i][0], acc[i][1], acc[i][2],
+// 	    jrk[i][0], jrk[i][1], jrk[i][2], pot[i]);
 //     double a = pot[i];
 //     double b = potx[i];
 //     fprintf(stdout, " %g %g %g \n",

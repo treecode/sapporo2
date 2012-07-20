@@ -76,7 +76,7 @@ int main(int argc, char *argv[]) {
     #ifdef _OCL_
       kernelFile.assign("OpenCL/kernels6th.cl");
     #else
-      kernelFile.assign("CUDA/kernels6th.ptx");
+      kernelFile.assign("CUDA/kernels6thDP.ptx");
     #endif
   }
   
@@ -140,10 +140,10 @@ int main(int argc, char *argv[]) {
                           id+i, pos+i, vel+i,
                           eps2, h2,
                           acc+i, jrk+i,snp+i, crk+i, pot+i, nnb+i, NULL, true);
-        for(int k=0; k < 10; k++)
-       {
-            fprintf(stderr, " %d  %f \n", i+k, pot[i+k]);
-        }
+//         for(int k=0; k < 10; k++)
+//        {
+//             fprintf(stderr, " %d  %f \n", i+k, pot[i+k]);
+//         }
 
     }
 

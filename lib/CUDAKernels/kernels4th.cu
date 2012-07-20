@@ -221,13 +221,12 @@ __device__ __forceinline__ void body_body_interaction(
 
 //TODO should make this depending on if we use Fermi or GT80/GT200
 // #define ajc(i, j) (i + __mul24(blockDim.x,j))
-#define ajc(i, j) (i + blockDim.x*j)
+// #define ajc(i, j) (i + blockDim.x*j)
 extern "C" __global__ void
 //__launch_bounds__(NTHREADS)
 dev_evaluate_gravity(
     const int        nj_total, 
     const int        nj,
-//     const int        offset,
     const int        ni_offset,
     const double4    *pos_j, 
     const double4    *pos_i,
@@ -274,7 +273,6 @@ dev_evaluate_gravity(
 
   const float LARGEnum = 1.0e10f;
 
-//   float  ds2_min = LARGEnum;
   float2  ds2_min2;
   ds2_min2.x = LARGEnum;
   ds2_min2.y = __int_as_float(-1);
@@ -383,7 +381,6 @@ dev_evaluate_gravity(
   {
     //Convert results to double and write
     const int addr = bx*blockDim.x + tx;
-//     vel_i[offset + addr].w = ds2_min;
     ds2min_i[      addr]   = ds2_min;
     acc_i[         addr]   = acc.to_double4();
     jrk_i[         addr]   = (double4){jrk.x, jrk.y, jrk.z, jrk.w};
@@ -391,24 +388,15 @@ dev_evaluate_gravity(
   }
 
 
+
+  //Write the neighbour list
   {
-    //int offset  = threadIdx.x * NBLOCKS*NGB_PB + blockIdx.x * NGB_PB;
     int offset  = threadIdx.x * gridDim.x*NGB_PB + blockIdx.x * NGB_PB;
     offset     += shared_ofs[addr];
     n_ngb       = shared_ngb[addr];
     for (int i = 0; i < n_ngb; i++) 
       ngb_list[offset + i] = local_ngb_list[i];
   }
-
-
-// if(blockIdx.x == 0)
-// {
-//   printf("ON DEV [x: %d y: %d %d %d %d]  offset:  %d  offset2: %d ngb: %d\n",
-// threadIdx.x, threadIdx.y, blockIdx.x, gridDim.x, NGB_PB, 
-// threadIdx.x * gridDim.x*NGB_PB + blockIdx.x * NGB_PB,
-// offset,shared_ngb[ajc(threadIdx.x, threadIdx.y)]);
-// }
-
 }
 
 
@@ -508,8 +496,8 @@ extern "C" __global__ void dev_reduce_forces(
 
   //Compute the offset of where to store the data and where to read it from
   //Store is based on ni, where to read it from is based on thread/block
-  int offset     = (offset_ni_idx * blockIdx.x)  * NGB_PP + shared_ofs[threadIdx.x];
-  int offset_end = (offset_ni_idx * blockIdx.x)  * NGB_PP + NGB_PP;
+  int offset     = (offset_ni_idx + blockIdx.x)  * NGB_PP + shared_ofs[threadIdx.x];
+  int offset_end = (offset_ni_idx + blockIdx.x)  * NGB_PP + NGB_PP;
   int ngb_index  = threadIdx.x * NGB_PB + blockIdx.x * NGB_PB*blockDim.x;
 
 
@@ -518,7 +506,7 @@ extern "C" __global__ void dev_reduce_forces(
   for (int i = 0; i < n_ngb; i++)
   {
     if (offset + i < offset_end){
-      ngb_list[offset + i] = ngb_list_i_temp[ngb_index + i];
+        ngb_list[offset + i] = ngb_list_i_temp[ngb_index + i];
     }
   }
 
@@ -594,7 +582,6 @@ extern "C" __global__ void dev_predictor(int nj,
 
 
   if (index < nj) {
-
     //Convert the doubles to DS
     DS2 t;
     t.x = to_DS(t_j[index].x);

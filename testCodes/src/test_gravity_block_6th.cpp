@@ -111,6 +111,8 @@ int main(int argc, char *argv[]) {
   int ipmax = grav.get_n_pipes();
 //   double *i_nene = new double[ipmax];
 
+  ipmax = min(n, ipmax);
+  
   double null3[3] = {0,0,0};
   for (int i = 0; i < n; i++) {
     grav.set_j_particle(i, id[i],
@@ -125,6 +127,9 @@ int main(int argc, char *argv[]) {
   double eps2 = 0;
   n1 = 0;
   n2 = 2*ipmax;
+  n2 = n;
+  
+#if 1  
   for (int i = n1; i < n2; i += ipmax) {
     int npart = min(n2 - i, ipmax);
     
@@ -140,13 +145,13 @@ int main(int argc, char *argv[]) {
 			eps2, h2,
 			acc+i, jrk+i,snp+i, crk+i, pot+i, nnb+i, NULL, true);
                         
-    for(int j=0; j < ipmax; j++){
+    for(int j=i; j < i+npart; j++){
     printf("calchalf2: %d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\n", j,
            acc[j][0], acc[j][1], acc[j][2],
            pot[j], jrk[j][0],
            jrk[j][1], jrk[j][2], nnb[j]);
     }
-    exit(0);
+//     exit(0);
 
 //       grav.read_ngb_list(cluster_id);
 //       for (int i1 = i; i1 < i + npart; i1++) {
@@ -159,7 +164,7 @@ int main(int argc, char *argv[]) {
 //       }
                         
   }
-
+#endif
 //  cerr << "After last half \n";  exit(0);
 
   for (int kk = 0; kk < 1; kk++) {

@@ -207,7 +207,7 @@ __inline void body_body_interaction(inout double2 *ds2_min,
 __kernel void dev_evaluate_gravity(
                                      const          int        nj_total, 
                                      const          int        nj,
-                                     const          int        offset,                                   
+                                     const          int        ni_offset,                                   
                                      const __global double4    *pos_j, 
                                      const __global double4    *pos_i,
                                      __out __global double4    *acc_i,                                    
@@ -217,10 +217,11 @@ __kernel void dev_evaluate_gravity(
                                      const __global double4    *vel_i,
                                      __out __global double4    *jrk_i,
                                      __out __global int        *id_i,
+                                     __out __global double     *ds2min_i,
+                                     __out __global int        *ngb_count_i,
                                      __out __global int        *ngb_list,
-                                           __local  double4    *shared_pos) {
-
-
+                                           __local  double4    *shared_pos)
+{
 
   const int tx = threadIdx_x;
   const int ty = threadIdx_y;
@@ -234,10 +235,9 @@ __kernel void dev_evaluate_gravity(
   int local_ngb_list[NGB_PB + 1];
   int n_ngb = 0;
 
-  const double4 pos    = pos_i[threadIdx_x];
-  const int particleID = id_i[threadIdx_x];
-
-  const double4 vel = vel_i[threadIdx_x];
+  const double4 pos    = pos_i[threadIdx_x + ni_offset];
+  const int particleID = id_i [threadIdx_x + ni_offset];
+  const double4 vel    = vel_i[threadIdx_x + ni_offset];
 
   const float LARGEnum = 1.0e10f;
 
@@ -358,38 +358,52 @@ __kernel void dev_evaluate_gravity(
   {
     //Convert results to double and write
     const int addr = bx*blockDim_x + tx;
-    vel_i[offset + addr].w = ds2_min;
+    ds2min_i[      addr]   = ds2_min;
     acc_i[         addr].x = acc.x; acc_i[         addr].y = acc.y;
     acc_i[         addr].z = acc.z; acc_i[         addr].w = acc.w;
     jrk_i[         addr]   = jerkNew;
+    ngb_count_i[   addr]   = n_ngb;
   }
 
-
+  //Write the neighbour list
   {
-    //int offset  = threadIdx.x * NBLOCKS*NGB_PB + blockIdx.x * NGB_PB;
     int offset  = threadIdx_x * gridDim_x*NGB_PB + blockIdx_x * NGB_PB;
-    offset += shared_ofs[ajc(threadIdx_x, threadIdx_y)];
-
-    if (threadIdx_y == 0)
-      ngb_list[offset++] = n_ngb;
-
-    n_ngb = shared_ngb[ajc(threadIdx_x, threadIdx_y)];
+    offset     += shared_ofs[addr];
+    n_ngb       = shared_ngb[addr];
     for (int i = 0; i < n_ngb; i++) 
       ngb_list[offset + i] = local_ngb_list[i];
   }
+
+//   {
+//     //int offset  = threadIdx.x * NBLOCKS*NGB_PB + blockIdx.x * NGB_PB;
+//     int offset  = threadIdx_x * gridDim_x*NGB_PB + blockIdx_x * NGB_PB;
+//     offset += shared_ofs[ajc(threadIdx_x, threadIdx_y)];
+// 
+//     if (threadIdx_y == 0)
+//       ngb_list[offset++] = n_ngb;
+// 
+//     n_ngb = shared_ngb[ajc(threadIdx_x, threadIdx_y)];
+//     for (int i = 0; i < n_ngb; i++) 
+//       ngb_list[offset + i] = local_ngb_list[i];
+//   }
 }
 
 /*
  *  blockDim.x = #of block in previous kernel
  *  gridDim.x  = ni
  */ 
-__kernel void dev_reduce_forces(__global double4 *acc_i, 
+__kernel void dev_reduce_forces( 
+                                __global double4 *acc_i_temp, 
+                                __global double4 *jrk_i_temp,
+                                __global double  *ds_i_temp,
+                                __global int     *ngb_count_i_temp,
+                                __global int     *ngb_list_i_temp,
+                                __global double4 *acc_i,
                                 __global double4 *jrk_i,
                                 __global double  *ds_i,
-                                __global double4 *vel_i,
-                                         int     offset_ds,
-                                         int     offset,
-                               __global  int     *ngb_list,
+                                __global int     *ngb_count_i,
+                                __global int     *ngb_list,                                
+                                         int     offset_ni_idx,
                                __local  double4  *shared_acc ) {
   
 //    extern __shared__ float4 shared_acc[];
@@ -401,18 +415,13 @@ __kernel void dev_reduce_forces(__global double4 *acc_i,
   
   int index = threadIdx_x * gridDim_x + blockIdx_x;
 
-//   shared_acc[threadIdx.x] = acc_i[index];
-//   shared_jrk[threadIdx.x] = jrk_i[index];
-//   shared_ds [threadIdx.x] = vel_i[offset_ds + index].w;
-
   //Convert the data to floats
-  shared_acc[threadIdx_x] = acc_i[index];
-  shared_jrk[threadIdx_x] = jrk_i[index];
-  shared_ds [threadIdx_x] = (double)vel_i[offset_ds + index].w;  //TODO JB dont we miss the value at vel_i[0 + x] this way?
+  shared_acc[threadIdx_x] = acc_i_temp[index];
+  shared_jrk[threadIdx_x] = jrk_i_temp[index];
+  shared_ds [threadIdx_x] = ds_i_temp [index]; 
 
 
-  int ngb_index = threadIdx_x * NGB_PB + blockIdx_x * NGB_PB*blockDim_x;
-  shared_ngb[threadIdx_x] = ngb_list[ngb_index];
+  shared_ngb[threadIdx_x] =  ngb_count_i_temp[index];
   shared_ofs[threadIdx_x] = 0;
          
   __syncthreads();
@@ -439,7 +448,7 @@ __kernel void dev_reduce_forces(__global double4 *acc_i,
         jrk0.w = shared_jrk[i].w;
       }
 
-      shared_ofs[i] = min(n_ngb + 1, NGB_PP);
+      shared_ofs[i] = min(n_ngb, NGB_PP);
       n_ngb += shared_ngb[i];
 
     }
@@ -449,27 +458,43 @@ __kernel void dev_reduce_forces(__global double4 *acc_i,
 //     jrk0.w = (int)__float_as_int(jrk0.w);
 
     //Store the results
-    acc_i[blockIdx_x] = acc0;
-    jrk_i[blockIdx_x] = jrk0;
-    ds_i [blockIdx_x] = ds0;
+    acc_i       [blockIdx_x + offset_ni_idx] = acc0;
+    jrk_i       [blockIdx_x + offset_ni_idx] = jrk0;
+    ds_i        [blockIdx_x + offset_ni_idx] = ds0;
+    ngb_count_i [blockIdx_x + offset_ni_idx] = n_ngb;
   }
   __syncthreads();
 
+  //Compute the offset of where to store the data and where to read it from
+  //Store is based on ni, where to read it from is based on thread/block
+  int offset     = (offset_ni_idx + blockIdx_x)  * NGB_PP + shared_ofs[threadIdx_x];
+  int offset_end = (offset_ni_idx + blockIdx_x)  * NGB_PP + NGB_PP;
+  int ngb_index  = threadIdx_x * NGB_PB + blockIdx_x * NGB_PB*blockDim_x;
 
-  offset += blockIdx_x * NGB_PP + shared_ofs[threadIdx_x];
-  int offset_end;
-  if (threadIdx_x == 0) {
-    shared_ofs[0] = offset + NGB_PP;
-    ngb_list[offset++] = n_ngb;
-  }
-  __syncthreads();
-  
-  offset_end = shared_ofs[0];
-  
+
   n_ngb = shared_ngb[threadIdx_x];
+  __syncthreads();
   for (int i = 0; i < n_ngb; i++)
-    if (offset + i < offset_end)
-      ngb_list[offset + i] = ngb_list[ngb_index + 1 + i];
+  {
+    if (offset + i < offset_end){
+        ngb_list[offset + i] = ngb_list_i_temp[ngb_index + i];
+    }
+  }
+
+//   offset += blockIdx_x * NGB_PP + shared_ofs[threadIdx_x];
+//   int offset_end;
+//   if (threadIdx_x == 0) {
+//     shared_ofs[0] = offset + NGB_PP;
+//     ngb_list[offset++] = n_ngb;
+//   }
+//   __syncthreads();
+//   
+//   offset_end = shared_ofs[0];
+//   
+//   n_ngb = shared_ngb[threadIdx_x];
+//   for (int i = 0; i < n_ngb; i++)
+//     if (offset + i < offset_end)
+//       ngb_list[offset + i] = ngb_list[ngb_index + 1 + i];
   
 }
 

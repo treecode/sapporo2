@@ -3,7 +3,7 @@
 
 #include <string>
 
-#define DEBUG_PRINT
+// #define DEBUG_PRINT
 
 
 //Neighbour information
@@ -13,7 +13,7 @@
 
 
 #ifndef NPIPES
-#define NPIPES        256
+#define NPIPES        16384
 #endif
 
 #ifndef NTHREADS

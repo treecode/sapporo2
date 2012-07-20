@@ -163,7 +163,6 @@ namespace sapporo2 {
         cerr << "Using  " << blocksPerMulti << " blocks per multi-processor for a total of : " << NBLOCKS << std::endl;
         //NBLOCKS = 1 ;
         
-        
         //Set the device memory contexts
         
         //J-particle buffers
@@ -252,69 +251,70 @@ namespace sapporo2 {
           }
         }
         
-        //TODO make this pinned memory since the communicate with the host        
+        //TODO make the temp buffers pinned memory since the communicate with the host        
         pos_j_temp.allocate(nj, false);       
-        
+        acc_j_temp.allocate(njExtraForPipes, false); //Also used for acc_i_temp
 
         if(integrationOrder > GRAPE5)
         {
           t_j_temp.allocate(nj,    false);       id_j_temp.allocate(nj,  false);  
           
-          vel_j_temp.allocate(njExtraForPipes, false);           
-          acc_j_temp.allocate(njExtraForPipes, false);    
-          jrk_j_temp.allocate(njExtraForPipes, false); 
+          vel_j_temp.allocate(njExtraForPipes, false); //Also used for ds2_min_i_temp          
+          jrk_j_temp.allocate(njExtraForPipes, false); //Also used for jrk_i_temp
                     
         
           if(integrationOrder > FOURTH)
           {
-            snp_j_temp.allocate(njExtraForPipes, false);      crk_j_temp.allocate(nj, false); 
+            snp_j_temp.allocate(njExtraForPipes, false); //Also used for snp_i_temp
+            crk_j_temp.allocate(nj, false); 
           }                
         }
         
-        //i particle TODO copied it from sap1, need to check how and why
+
         //TODO make this pinned memory since the communicate with the host
         pos_i.allocate  (n_pipes             , false);   
-        acc_i.allocate  (n_pipes *    NBLOCKS, false, false);   
-        accin_i.allocate(n_pipes *    NBLOCKS, false, false);   
+        acc_i.allocate  (n_pipes             , false, false);   
+        accin_i.allocate(n_pipes             , false, false);   
 
         if(integrationOrder > GRAPE5)
         {
-          vel_i.allocate(n_pipes * (1 + NBLOCKS), false);   
-          jrk_i.allocate(n_pipes *      NBLOCKS,  false);
-          id_i.allocate (n_pipes *      NBLOCKS,  false);   
-          ds_i.allocate(n_pipes                ,  false);        
+          vel_i.allocate(n_pipes,  false);   
+          jrk_i.allocate(n_pipes,  false);
+          id_i.allocate (n_pipes,  false);   
+          ds_i.allocate(n_pipes,   false);        
           
-          ngb_count_i.allocate(n_pipes *      NBLOCKS,  false);
+          ngb_count_i.allocate(n_pipes,  false);
           
       
           if(integrationOrder > FOURTH)
           {
-            snp_i.allocate(n_pipes *      NBLOCKS, false);
-            crk_i.allocate(n_pipes *      NBLOCKS, false);          
+            snp_i.allocate(n_pipes, false);
+            crk_i.allocate(n_pipes, false);          
           }  
         }  
         
 
-         int ngbMem =  (n_pipes*(NGB_PP + 1) + n_pipes*NBLOCKS*(NGB_PP+1)); //TODO check / change!
-//         int ngbMem =  (NTHREADS*(NGB_PP + 1) + NTHREADS*NBLOCKS*(NGB_PP+1)); //TODO check / change!
-        ngb_list_i.allocate(ngbMem*10, false);  
-        //TODO normal size
+        int ngbMem =  n_pipes*(NGB_PP); //Required for final NGB List     
+        ngb_list_i.allocate(ngbMem, false);  
         
+        ngbMem =  NTHREADS*NBLOCKS*(NGB_PP); //Required for temporary NGB List   
         ngb_list_i_temp.allocate(ngbMem, false);
         
-        //acc_j_temp  --> acc_i_temp
-        //jrk_j_temp  --> jrk_i_temp
-        //storage for ds2min vel_j_temp --> ds2_min
-        //snap_j_temp --> snp_i_temp
-        //ngb_list_i
-
+        //Set the temp memory buffers for the partial i-particle results
         acc_i_temp        = acc_j_temp;
-        jrk_i_temp        = jrk_j_temp;
-        ds2_min_i_temp    = vel_j_temp;  
-        ngb_count_i_temp  = id_j_temp;
         
-        snp_i_temp        = snp_j_temp; //6th and 8th order
+        if(integrationOrder > GRAPE5)
+        {
+          jrk_i_temp        = jrk_j_temp;
+          ds2_min_i_temp    = vel_j_temp;  
+          ngb_count_i_temp  = id_j_temp;
+          if(integrationOrder > FOURTH)
+          {
+            snp_i_temp        = snp_j_temp; //6th and 8th order
+          }
+        }
         
+
         
         return 0;
       }
@@ -323,12 +323,19 @@ namespace sapporo2 {
       {
         const int  flags    = 0;
         const bool copyBack = false;   //Host content is newer than device so no copy
+        
+        int njExtraForPipes = nj;
+        //Required temporary memory items before reducing:  NTHREADS*NBLOCKS
+        if(NTHREADS*NBLOCKS > nj)
+          njExtraForPipes = NTHREADS*NBLOCKS;
+        
+        
         //J-particle allocation
         pPos_j.realloc   (nj, flags);  
         pos_j.realloc    (nj, flags);       
         address_j.realloc(nj, flags, copyBack);
         
-//         Hier gebleven met opruimn
+//TODO         Hier gebleven met opruimn
         
         if(integrationOrder > GRAPE5)
         {
@@ -350,14 +357,27 @@ namespace sapporo2 {
         
         if(integrationOrder > GRAPE5)
         {
-          t_j_temp.realloc(nj, false,   false);         id_j_temp.realloc(nj, false, false);  
-          vel_j_temp.realloc(nj, false, false); 
-          acc_j_temp.realloc(nj, false, false);       jrk_j_temp.realloc(nj, false , false); 
+          t_j_temp.realloc(nj, false,   false);         id_j_temp.realloc(njExtraForPipes, false, false);  
+          vel_j_temp.realloc(njExtraForPipes, false, false); 
+          acc_j_temp.realloc(nj, false, false);       jrk_j_temp.realloc(njExtraForPipes, false , false); 
         
           if(integrationOrder > FOURTH)
           {
-            snp_j_temp.realloc(nj, false, false);       crk_j_temp.realloc(nj, false, false); 
+            snp_j_temp.realloc(njExtraForPipes, false, false);       crk_j_temp.realloc(nj, false, false); 
           }  
+        }        
+        
+        //Reset the temporary i-particle result buffers
+        acc_i_temp        = acc_j_temp;
+        if(integrationOrder > GRAPE5)
+        {
+          jrk_i_temp        = jrk_j_temp;
+          ds2_min_i_temp    = vel_j_temp;  
+          ngb_count_i_temp  = id_j_temp;
+          if(integrationOrder > FOURTH)
+          {
+            snp_i_temp        = snp_j_temp; //6th and 8th order
+          }
         }        
         
         return 0;
