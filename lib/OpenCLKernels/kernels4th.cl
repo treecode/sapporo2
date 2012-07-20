@@ -247,7 +247,7 @@ __kernel
 void dev_evaluate_gravity(
                                      const          int        nj_total, 
                                      const          int        nj,
-                                     const          int        offset,                                   
+                                     const          int        ni_offset,                                   
                                      const __global double4    *pos_j, 
                                      const __global double4    *pos_i,
                                      __out __global double4    *acc_i,                                    
@@ -257,6 +257,8 @@ void dev_evaluate_gravity(
                                      const __global double4    *vel_i,
                                      __out __global double4    *jrk_i,
                                      __out __global int        *id_i,
+                                     __out __global double     *ds2min_i,
+                                     __out __global int        *ngb_count_i,
                                      __out __global int        *ngb_list,
                                            __local  DS4        *shared_pos) {
 
@@ -277,13 +279,14 @@ void dev_evaluate_gravity(
   const float EPS2 = (float)EPS2_d;
 
   DS4 pos;
-  pos.x = to_DS(pos_i[tx].x); 
-  pos.y = to_DS(pos_i[tx].y);
-  pos.z = to_DS(pos_i[tx].z);
-  pos.w = to_DS(pos_i[tx].w);
+  pos.x = to_DS(pos_i[tx+ni_offset].x); 
+  pos.y = to_DS(pos_i[tx+ni_offset].y);
+  pos.z = to_DS(pos_i[tx+ni_offset].z);
+  pos.w = to_DS(pos_i[tx+ni_offset].w);
 
-  const int iID    = id_i[tx];
-  const float4 vel = (float4){vel_i[tx].x, vel_i[tx].y, vel_i[tx].z, vel_i[tx].w};
+  const int iID    = id_i[tx+ni_offset];
+  const float4 vel = (float4){vel_i[tx+ni_offset].x, vel_i[tx+ni_offset].y, 
+                              vel_i[tx+ni_offset].z, vel_i[tx+ni_offset].w};
 
   const float LARGEnum = 1.0e10f;
 
@@ -412,7 +415,7 @@ void dev_evaluate_gravity(
         ds2_min  = ds1;
       }
 
-      shared_ofs[addr] = min(n_ngb + 1, NGB_PB);
+      shared_ofs[addr] = min(n_ngb, NGB_PB);
       n_ngb += shared_ngb[addr];
     }
       n_ngb  = min(n_ngb, NGB_PB);
@@ -425,58 +428,56 @@ void dev_evaluate_gravity(
   {
     //Convert results to double and write
     const int addr = bx*blockDim_x + tx;
-    vel_i[offset + addr].w = ds2_min;
+    ds2min_i[      addr]   = ds2_min;
     acc_i[         addr].x = acc.x; acc_i[         addr].y = acc.y;
     acc_i[         addr].z = acc.z; acc_i[         addr].w = acc.w;
     jrk_i[         addr] = (double4){jrk.x, jrk.y, jrk.z, jrk.w};
+    ngb_count_i[   addr]   = n_ngb;
   }
 
-#if 1
+  //Write the neighbour list
   {
     int offset  = threadIdx_x * gridDim_x*NGB_PB + blockIdx_x * NGB_PB;
-    offset += shared_ofs[ajc(threadIdx_x, threadIdx_y)];
-
-    if (threadIdx_y == 0)
-      ngb_list[offset++] = n_ngb;
-
-    n_ngb = shared_ngb[ajc(threadIdx_x, threadIdx_y)];
+    offset     += shared_ofs[addr];
+    n_ngb       = shared_ngb[addr];
     for (int i = 0; i < n_ngb; i++) 
       ngb_list[offset + i] = local_ngb_list[i];
   }
-#endif
-
 }
 
 /*
  *  blockDim.x = #of block in previous kernel
  *  gridDim.x  = ni
  */ 
-__kernel void dev_reduce_forces(__global double4 *acc_i, 
-                                __global double4 *jrk_i,
+__kernel void dev_reduce_forces(
+                                __global double4 *acc_i_temp, 
+                                __global double4 *jrk_i_temp,
+                                __global double  *ds_i_temp,
+                                __global int     *ngb_count_i_temp,
+                                __global int     *ngb_list_i_temp,
+                                __global double4 *result_i,
                                 __global double  *ds_i,
-                                __global double4 *vel_i,
-                                         int     offset_ds,
-                                         int     offset,
-                               __global  int     *ngb_list,
+                                __global int     *ngb_count_i,
+                                __global int     *ngb_list,                                
+                                         int     offset_ni_idx,
+                                         int     ni_total,
                                __local  float4   *shared_acc ) {
   
 //    extern __shared__ float4 shared_acc[];
- __local  float4 *shared_jrk = (__local float4*)&shared_acc[blockDim_x];
- __local  int    *shared_ngb = (__local int*   )&shared_jrk[blockDim_x];
-  __local int    *shared_ofs = (__local int*   )&shared_ngb[blockDim_x];
-  __local float  *shared_ds  = (__local float* )&shared_ofs[blockDim_x];
+  __local  float4 *shared_jrk = (__local float4*)&shared_acc[blockDim_x];
+  __local  int    *shared_ngb = (__local int*   )&shared_jrk[blockDim_x];
+  __local int    *shared_ofs  = (__local int*   )&shared_ngb[blockDim_x];
+  __local float  *shared_ds   = (__local float* )&shared_ofs[blockDim_x];
   
   int index = threadIdx_x * gridDim_x + blockIdx_x;
 
 
   //Convert the data to floats
-  shared_acc[threadIdx_x] = (float4){acc_i[index].x, acc_i[index].y, acc_i[index].z, acc_i[index].w};
-  shared_jrk[threadIdx_x] = (float4){jrk_i[index].x, jrk_i[index].y, jrk_i[index].z, jrk_i[index].w};
-  shared_ds [threadIdx_x] = (float)vel_i[offset_ds + index].w;  //TODO JB dont we miss the value at vel_i[0 + x] this way?
+  shared_acc[threadIdx_x] = (float4){acc_i_temp[index].x, acc_i_temp[index].y, acc_i_temp[index].z, acc_i_temp[index].w};
+  shared_jrk[threadIdx_x] = (float4){jrk_i_temp[index].x, jrk_i_temp[index].y, jrk_i_temp[index].z, jrk_i_temp[index].w};
+  shared_ds [threadIdx_x] = (float)ds_i_temp[index]; 
 
-
-  int ngb_index = threadIdx_x * NGB_PB + blockIdx_x * NGB_PB*blockDim_x;
-  shared_ngb[threadIdx_x] = ngb_list[ngb_index];
+  shared_ngb[threadIdx_x] =  ngb_count_i_temp[index];
   shared_ofs[threadIdx_x] = 0;
          
   __syncthreads();
@@ -503,7 +504,7 @@ __kernel void dev_reduce_forces(__global double4 *acc_i,
         jrk0.w = shared_jrk[i].w;
       }
 
-      shared_ofs[i] = min(n_ngb + 1, NGB_PP);
+      shared_ofs[i] = min(n_ngb, NGB_PP);
       n_ngb += shared_ngb[i];
 
     }
@@ -516,29 +517,29 @@ __kernel void dev_reduce_forces(__global double4 *acc_i,
     #endif
 
     //Store the results
-    acc_i[blockIdx_x] = (double4){acc0.x, acc0.y, acc0.z, acc0.w};
-    jrk_i[blockIdx_x] = (double4){jrk0.x, jrk0.y, jrk0.z, jrk0.w};;
-    
-    ds_i [blockIdx_x] = ds0;
+    result_i       [blockIdx_x + offset_ni_idx]            = (double4){acc0.x, acc0.y, acc0.z, acc0.w};
+    result_i       [blockIdx_x + offset_ni_idx + ni_total] = (double4){jrk0.x, jrk0.y, jrk0.z, jrk0.w};    
+    ds_i        [blockIdx_x + offset_ni_idx] = ds0;
+    ngb_count_i [blockIdx_x + offset_ni_idx] = n_ngb;
   }
   __syncthreads();
 
+  //Compute the offset of where to store the data and where to read it from
+  //Store is based on ni, where to read it from is based on thread/block
+  int offset     = (offset_ni_idx + blockIdx_x)  * NGB_PP + shared_ofs[threadIdx_x];
+  int offset_end = (offset_ni_idx + blockIdx_x)  * NGB_PP + NGB_PP;
+  int ngb_index  = threadIdx_x * NGB_PB + blockIdx_x * NGB_PB*blockDim_x;
 
-  offset += blockIdx_x * NGB_PP + shared_ofs[threadIdx_x];
-  int offset_end;
-  if (threadIdx_x == 0) {
-    shared_ofs[0] = offset + NGB_PP;
-    ngb_list[offset++] = n_ngb;
-  }
-  __syncthreads();
-  
-  offset_end = shared_ofs[0];
-#if 1
+
   n_ngb = shared_ngb[threadIdx_x];
+  __syncthreads();
   for (int i = 0; i < n_ngb; i++)
-    if (offset + i < offset_end)
-      ngb_list[offset + i] = ngb_list[ngb_index + 1 + i];
-#endif  
+  {
+    if (offset + i < offset_end){
+        ngb_list[offset + i] = ngb_list_i_temp[ngb_index + i];
+    }
+  }
+
 }
 
 
@@ -546,7 +547,7 @@ __kernel void dev_reduce_forces(__global double4 *acc_i,
  * Function that moves the (changed) j-particles
  * to the correct address location.
 */
-__kernel void dev_copy_particles(int nj, int nj_max,
+__kernel void dev_copy_particles(int nj, 
                                  __global             double4   *pos_j, 
                                  __global             double4   *pos_j_temp,
                                  __global             int       *address_j,

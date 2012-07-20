@@ -4,6 +4,7 @@ struct real3 {
   double x, y, z;
 };
 
+
 double get_time() {
   struct timeval Tvalue;
   struct timezone dummy;
@@ -27,15 +28,12 @@ int main(int argc, char *argv[]) {
   double (*vel)[3] = new double[n][3];
   double (*acc)[3] = new double[n][3];
   double (*jrk)[3] = new double[n][3];
-  double (*snp)[3] = new double[n][3];
-  double (*crk)[3] = new double[n][3];
-  
   double *pot  = new double[n];
   double *mass = new double[n];
   int    *nnb  = new int[n];
   double *h2  = new double[n];
-  int    *nngb  = new int[n];
-  int    *ngb_list = new int[n];
+//   int    *nngb  = new int[n];
+//   int    *ngb_list = new int[n];
   int    *id   = new int[n];
 
   double tm = 0;
@@ -47,15 +45,7 @@ int main(int argc, char *argv[]) {
     vel[i][0] = drand48();
     vel[i][1] = drand48();
     vel[i][2] = drand48();
-/*    
-    snp[i][0] = drand48();
-    snp[i][1] = drand48();
-    snp[i][2] = drand48();
-    
-    crk[i][0] = drand48();
-    crk[i][1] = drand48();
-    crk[i][2] = drand48();    
- */
+ 
     h2[i] = 1.0 * pow(12.0/n, 1.0/3);
     h2[i] = h2[i]*h2[i];
 
@@ -70,9 +60,6 @@ int main(int argc, char *argv[]) {
   
   sapporo grav;
   
-  int cluster_id = 0;
-//   int sapporo::open(std::string kernelFile, int *devices, int nprocs = 1, int order = FOURTH)
-//   grav.open("CUDA/kernels4th.ptx", cluster_id, 1, 1);
   int devices[] = {0,1,2,3};
 
   std::string kernelFile;
@@ -84,14 +71,14 @@ int main(int argc, char *argv[]) {
   else
   {    
     #ifdef _OCL_
-      kernelFile.assign("OpenCL/kernels6th.cl");
+      kernelFile.assign("OpenCL/kernelsG5SP.cl");
     #else
-      kernelFile.assign("CUDA/kernels6thDP.ptx");
+      kernelFile.assign("CUDA/kernelsG5SP.ptx");
     #endif
   }
   
-  int integrationOrder = 2;     //6th
-  int integrationPrecision = 0; //Default double-precision
+  int integrationOrder = 0;     //GRAPE5
+  int integrationPrecision = 0; //Default double-single
   int nDevices = 1;
   
  
@@ -106,13 +93,10 @@ int main(int argc, char *argv[]) {
 //   int sapporo::open(std::string kernelFile, int *devices, int nprocs = 1, int order = FOURTH, int precision = DEFAULT)  
   grav.open(kernelFile.c_str(),devices, nDevices, integrationOrder, integrationPrecision);
   
-  
-  
   int ipmax = grav.get_n_pipes();
 //   double *i_nene = new double[ipmax];
-
   ipmax = min(n, ipmax);
-  
+
   double null3[3] = {0,0,0};
   for (int i = 0; i < n; i++) {
     grav.set_j_particle(i, id[i],
@@ -122,14 +106,17 @@ int main(int argc, char *argv[]) {
   }
   
  
+  
+
   grav.set_time(0);
+  
  
-  double eps2 = 0;
+
+  //double eps2 = 1.0/n; //Some dummy softening since G5 cannot handle zero-softening
+  double eps2 = 0.00000001;
   n1 = 0;
   n2 = 2*ipmax;
-  n2 = n;
-  
-#if 1  
+  n2 = min(n2,n);
   for (int i = n1; i < n2; i += ipmax) {
     int npart = min(n2 - i, ipmax);
     
@@ -138,33 +125,75 @@ int main(int argc, char *argv[]) {
 			id + i,
 			pos+i, vel+i,
 			acc+i, jrk+i, pot+i, eps2, h2, NULL);
-                        
 
+                    
+                        
     grav.getGravResults(n, npart,
 			id+i, pos+i, vel+i,
 			eps2, h2,
-			acc+i, jrk+i,snp+i, crk+i, pot+i, nnb+i, NULL, true);
+			acc+i, jrk+i,NULL, NULL, pot+i, nnb+i, NULL, true);
                         
-    for(int j=i; j < i+npart; j++){
-    printf("calchalf2: %d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\n", j,
-           acc[j][0], acc[j][1], acc[j][2],
-           pot[j], jrk[j][0],
-           jrk[j][1], jrk[j][2], nnb[j]);
+     for(int j=0; j < ipmax; j++){
+     printf("calchalf2: %d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\n", j,
+            acc[j][0], acc[j][1], acc[j][2],
+            pot[j], jrk[j][0],
+            jrk[j][1], jrk[j][2], nnb[j]);
+     }
+// 
+//  exit(0);
+ /* Test to retrieve the particle data after prediction */
+    if(0)
+    {
+//     int addr = 0;
+    for (int j = 530; j != 183; j = 183) {
+  
+    double temp_pos[3], temp_vel[3], temp_acc[3], temp_jrk[3], temp_ppos[3], temp_pvel[3];
+    double mass;
+    double ID;
+    double eps2;
+   
+    printf(" Ervoor \n"); 
+    grav.retrieve_j_particle_state(j, mass,
+                                   ID, eps2, 
+                                   temp_pos, temp_vel, 
+                                   temp_acc, temp_jrk, temp_ppos, 
+                                   temp_pvel, NULL);
+ 
+               
+    printf("\nJ-data: Pos: %f %f %f \tvel: %f %f %f \n",
+           temp_pos[0], temp_pos[1],temp_pos[2],
+           temp_vel[0], temp_vel[1],temp_vel[2]);
+    printf("J-data: acc: %f %f %f \tjrk: %f %f %f \n",
+           temp_acc[0], temp_acc[1],temp_acc[2],
+           temp_jrk[0], temp_jrk[1],temp_jrk[2]);
+    printf("J-data: PPos: %f %f %f \tPvel: %f %f %f \n",
+           temp_ppos[0], temp_ppos[1],temp_ppos[2],
+           temp_pvel[0], temp_pvel[1],temp_pvel[2]);           
+     }
     }
-//     exit(0);
-
-//       grav.read_ngb_list(cluster_id);
-//       for (int i1 = i; i1 < i + npart; i1++) {
-//         grav.get_ngb_list(cluster_id,
-//                           i1 - i,
-//                           n,
-//                           nngb[i1],
-//                           ngb_list);
-//         fprintf(stderr," ipipe= %d: n_ngb= %d\n", i1 - i, nngb[i1]);
-//       }
-                        
+    /* end test */       
+//      exit(0);
+    
+//      exit(0);
+/*       grav.read_ngb_list(cluster_id);
+       for (int i1 = i; i1 < i + npart; i1++) {
+         grav.get_ngb_list(cluster_id,
+                           i1 - i,
+                           n,
+                           nngb[i1],
+                           ngb_list);
+         fprintf(stderr," ipipe= %d: n_ngb= %d\n", i1 - i, nngb[i1]);
+	 if(i1-i == 255){
+		 for(int j=0; j < nngb[i1]; j++)
+		 {
+			 fprintf(stderr,"%d\t %d\n", j, ngb_list[j]);
+		 }
+	 }
+       }
+exit(0);                        
+*/
   }
-#endif
+
 //  cerr << "After last half \n";  exit(0);
 
   for (int kk = 0; kk < 1; kk++) {
@@ -207,27 +236,29 @@ int main(int argc, char *argv[]) {
       grav.getGravResults(ntest, npart,
 			 id+i, pos+i, vel+i,
 			 eps2, h2,
-			 acc+i, jrk+i, snp+i, crk+i, pot+i, NULL, NULL, false);
+			 acc+i, jrk+i, NULL, NULL, pot+i, NULL, NULL, false);
                          
-/*      int j = i;
+    
+                   /*      
+      int j = i;
       for(int j=i; j < npart; j++){      
        printf("%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n", j,
            acc[j][0], acc[j][1], acc[j][2],
            pot[j], jrk[j][0],
            jrk[j][1], jrk[j][2]);
       }
-       exit(0);  */   
+       exit(0);  */
                          
                          
-      grav.read_ngb_list(cluster_id);
-      for (int i1 = i; i1 < i + npart; i1++) {
-	grav.get_ngb_list(cluster_id,
-			  i1 - i,
-			  n,
-			  nngb[i1],
-			  ngb_list);
+//       grav.read_ngb_list(cluster_id);
+//       for (int i1 = i; i1 < i + npart; i1++) {
+// 	grav.get_ngb_list(cluster_id,
+// 			  i1 - i,
+// 			  n,
+// 			  nngb[i1],
+// 			  ngb_list);
 //   	fprintf(stderr," ipipe= %d: n_ngb= %d\n", i1 - i, nngb[i1]);
-      }
+//       }
     }
     
 //     exit(0);

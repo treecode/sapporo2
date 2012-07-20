@@ -3,14 +3,6 @@
 struct real3 {
   double x, y, z;
 };
-double get_time() {
-  struct timeval Tvalue;
-  struct timezone dummy;
-
-  gettimeofday(&Tvalue,&dummy);
-  return ((double) Tvalue.tv_sec +
-          1.e-6*((double) Tvalue.tv_usec));
-}
 
 double get_time() {
   struct timeval Tvalue;
@@ -20,8 +12,6 @@ double get_time() {
   return ((double) Tvalue.tv_sec +
           1.e-6*((double) Tvalue.tv_usec));
 }
-
-
 int main(int argc, char *argv[]) {
   int n = 1024;
   int ndev = 1;
@@ -37,8 +27,6 @@ int main(int argc, char *argv[]) {
   double (*vel)[3] = new double[n][3];
   double (*acc)[3] = new double[n][3];
   double (*jrk)[3] = new double[n][3];
-  double (*snp)[3] = new double[n][3];
-  double (*crk)[3] = new double[n][3];
   double *pot  = new double[n];
   double *mass = new double[n];
   int    *nnb  = new int[n];
@@ -73,7 +61,7 @@ int main(int argc, char *argv[]) {
 //   grav.open("CUDA/kernels4th.ptx", cluster_id, 1, 1);
   int devices[] = {0,1,2,3,4,5};
 //  grav.open("CUDA/kernels4thDP.ptx",devices , 1, 1);
-  
+//   grav.open("CUDA/kernels4th.ptx",devices , ndev, 1);
   
   std::string kernelFile;
   
@@ -84,14 +72,14 @@ int main(int argc, char *argv[]) {
   else
   {    
     #ifdef _OCL_
-      kernelFile.assign("OpenCL/kernels6th.cl");
+      kernelFile.assign("OpenCL/kernelsG5SP.cl");
     #else
-      kernelFile.assign("CUDA/kernels6thDP.ptx");
+      kernelFile.assign("CUDA/kernelsG5SP.ptx");
     #endif
   }
   
-  int integrationOrder = 2;     //6th
-  int integrationPrecision = 0; //Default double-precision
+  int integrationOrder = 0;     //GRAPE5
+  int integrationPrecision = 0; //Default single
   int nDevices = 1;
   
  
@@ -106,7 +94,8 @@ int main(int argc, char *argv[]) {
 //   int sapporo::open(std::string kernelFile, int *devices, int nprocs = 1, int order = FOURTH, int precision = DEFAULT)  
   grav.open(kernelFile.c_str(),devices, nDevices, integrationOrder, integrationPrecision);
     
-  
+
+  double t0 = get_time(); 
   int ipmax = grav.get_n_pipes();
 
   double null3[3] = {0,0,0};
@@ -127,19 +116,13 @@ int main(int argc, char *argv[]) {
   double eps2 = 0;
   n1 = 0;
   n2 = 2*ipmax;
-//   for (int i = n1; i < n2; i += ipmax) {
-  for (int j = 0; j < 1; j++) {
-//     int npart = min(n2 - i, ipmax);
 
-
-    double tx = get_time();
-
-    for (int i = 0; i < n; i += ipmax)
-    {
+  //One call to initialize all the stuff
+    for (int i = 0; i < ipmax; i += ipmax)
+  {
       int npart = min(n - i, ipmax);
 
-
-      printf("n: %d  start: %d  npart: %d \n", n, i, npart);
+      fprintf(stderr, "n: %d  start: %d  npart: %d \n", n, i, npart);
 
       grav.startGravCalc(n, npart,
                           id + i,
@@ -149,17 +132,43 @@ int main(int argc, char *argv[]) {
       grav.getGravResults(n, npart,
                           id+i, pos+i, vel+i,
                           eps2, h2,
-                          acc+i, jrk+i,snp+i, crk+i, pot+i, nnb+i, NULL, true);
-//         for(int k=0; k < 10; k++)
-//        {
-//             fprintf(stderr, " %d  %f \n", i+k, pot[i+k]);
-//         }
+                          acc+i, jrk+i,NULL, NULL, pot+i, nnb+i, NULL, true);
+
+
+    }
+    
+    
+//   for (int i = n1; i < n2; i += ipmax) {
+  for (int j = 0; j < 1; j++) {
+//     int npart = min(n2 - i, ipmax);
+
+    double tx = get_time();
+
+    for (int i = 0; i < n; i += ipmax)
+    {
+      int npart = min(n - i, ipmax);
+
+
+      fprintf(stderr,"n: %d  start: %d  npart: %d \n", n, i, npart);
+
+      grav.startGravCalc(n, npart,
+                          id + i,
+                          pos+i, vel+i,
+                          acc+i, jrk+i, pot+i, eps2, h2, NULL);
+
+#if 1
+      grav.getGravResults(n, npart,
+                          id+i, pos+i, vel+i,
+                          eps2, h2,
+                          acc+i, jrk+i,NULL, NULL, pot+i, nnb+i, NULL, true);
+#endif
+//      if(i > 10000)     break;
 
     }
 
     fprintf(stderr, "TIMING N: %d\tNGPU: %d\tTSEC: %lg \n",
             n, ndev, get_time() - tx);
-    cerr << " done in " << get_time() - tx << " sec \n";
+    cerr << " done in " << get_time() - t0 << " sec \n";
   }
   grav.close();
 

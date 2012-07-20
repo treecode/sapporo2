@@ -109,7 +109,7 @@ __device__ __forceinline__ void body_body_interaction(
 extern "C" __global__ void dev_evaluate_gravity(
                                      const int        nj_total, 
                                      const int        nj,
-                                     const int        offset,
+                                     const int        ni_offset,
                                      const double4    *pos_j,                                      
                                      const double4    *pos_i,
                                      __out double4    *acc_i,                                      
@@ -130,8 +130,8 @@ extern "C" __global__ void dev_evaluate_gravity(
 
 
   DS4 pos;
-  pos.x = to_DS(pos_i[tx].x); pos.y = to_DS(pos_i[tx].y);
-  pos.z = to_DS(pos_i[tx].z); pos.w = to_DS(pos_i[tx].w);
+  pos.x = to_DS(pos_i[tx+ni_offset].x); pos.y = to_DS(pos_i[tx+ni_offset].y);
+  pos.z = to_DS(pos_i[tx+ni_offset].z); pos.w = to_DS(pos_i[tx+ni_offset].w);
 
   const float LARGEnum = 1.0e10f;
   float4 acc = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -208,14 +208,18 @@ extern "C" __global__ void dev_evaluate_gravity(
  *  gridDim.x  = ni
  */ 
 extern "C" __global__ void dev_reduce_forces(
-                                              double4 *acc_i) {
+                                             double4 *acc_i_temp,
+                                             double4 *acc_i,
+                                             int      offset_ni_idx)
+{
  extern __shared__ float4 shared_acc[];
 //   __shared__ float4     shared_acc[NBLOCKS];
   
   int index = threadIdx.x * gridDim.x + blockIdx.x;
 
   //Convert the data to floats
-  shared_acc[threadIdx.x] = (float4){acc_i[index].x, acc_i[index].y, acc_i[index].z, acc_i[index].w};
+  shared_acc[threadIdx.x] = (float4){acc_i_temp[index].x, acc_i_temp[index].y, 
+                                     acc_i_temp[index].z, acc_i_temp[index].w};
          
   __syncthreads();
 
@@ -229,7 +233,7 @@ extern "C" __global__ void dev_reduce_forces(
       acc0.w += shared_acc[i].w;
     }
     //Store the results
-    acc_i[blockIdx.x] = (double4){acc0.x, acc0.y, acc0.z, acc0.w};
+    acc_i[blockIdx.x+offset_ni_idx] = (double4){acc0.x, acc0.y, acc0.z, acc0.w};
   }
   __syncthreads();  
 }
@@ -239,11 +243,13 @@ extern "C" __global__ void dev_reduce_forces(
  * Function that moves the (changed) j-particles
  * to the correct address location.
 */
-extern "C" __global__ void dev_copy_particles(int nj, int nj_max,                                                                                        
+extern "C" __global__ void dev_copy_particles(int nj,                                                                                       
                                               double4   *pos_j, 
                                               double4   *pos_j_temp,
                                               int       *address_j) {
-  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  const uint bid = blockIdx.y * gridDim.x + blockIdx.x;
+  const uint tid = threadIdx.x;
+  const uint index = bid * blockDim.x + tid;
   //Copy the changed particles
   if (index < nj)
   {   

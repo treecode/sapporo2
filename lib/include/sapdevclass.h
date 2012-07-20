@@ -47,7 +47,7 @@ namespace sapporo2 {
       bool hasDevice;
       
       //Context related
-      dev::context    context;
+      dev::context    context;          
       
       //Number of multiprocessors and number of blocks per SM
       int nMulti;      
@@ -92,22 +92,40 @@ namespace sapporo2 {
       //in variables
       dev::memory<double4> pos_i;        //position       
       dev::memory<double4> vel_i;        //velocity
-      dev::memory<double4> accin_i;      //acceleration for 6th and 8th order
+      dev::memory<double4> acc_i;       //acceleration for 6th and 8th order
       
       //out variables
-      dev::memory<double4> acc_i;        //acceleration
-      dev::memory<double4> jrk_i;        //jerk
-      dev::memory<double4> snp_i;        //Snap for 6th and 8th order
-      dev::memory<double4> crk_i;        //Crack for 6th and 8th order
       dev::memory<double>  ds_i;         //minimal distance
       dev::memory<int>     id_i;         //particle id
+      dev::memory<int>     ngb_count_i;  //neighbour count
+      dev::memory<int>     ngb_list_i;   //neighbour list
       
-      dev::memory<int>   ngb_list_i;  //neighbour list
+      dev::memory<double4> iParticleResults; //The combined buffer containing the force results
+      
+      
+      //Temporary results for the i-particles, NOTE we re-use
+      //the temporary j-particle buffers:
+      //acc_j_temp  --> acc_i_temp
+      //jrk_j_temp  --> jrk_i_temp
+      //storage for ds2min vel_j_temp --> ds2_min
+      //snap_j_temp --> snp_i_temp
+      //id_j_temp  ---> ngb_count_i_temp
+      dev::memory<double4> acc_i_temp;
+      dev::memory<double4> jrk_i_temp;
+      dev::memory<double4>  ds2_min_i_temp; //Double4 so we can reuse memory
+      dev::memory<double4> snp_i_temp;
+      dev::memory<int>     ngb_count_i_temp; 
+      dev::memory<int>     ngb_list_i_temp;   //neighbour list
+   
+      
+     
       
       int dev_ni;                       //Number of ni particles on the device
       int nj_local;                     //Number of particles on this device
       
       int integrationOrder;             //Which integration algorithm do we use. Needed for shmem config
+     
+
 
     public:
       //Functions
@@ -124,7 +142,7 @@ namespace sapporo2 {
         cerr << "integrationOrder : " << integrationOrder << endl;        
         
         #ifdef __OPENCL_DEV__
-//           const int numPlatform = context.getPlatformInfo();
+          //int numPlatform = context.getPlatformInfo();
           context.getDeviceCount(CL_DEVICE_TYPE_GPU, 0);
         #else
           context.getDeviceCount();
@@ -142,7 +160,6 @@ namespace sapporo2 {
         NBLOCKS = nMulti*blocksPerMulti;
         cerr << "Using  " << blocksPerMulti << " blocks per multi-processor for a total of : " << NBLOCKS << std::endl;
         //NBLOCKS = 1 ;
-        
         
         //Set the device memory contexts
         
@@ -162,11 +179,14 @@ namespace sapporo2 {
         
         //i-particle buffers
         pos_i.setContext(context);      vel_i.setContext(context);
-        acc_i.setContext(context);      jrk_i.setContext(context);
         ds_i.setContext(context);       ngb_list_i.setContext(context);
-        id_i.setContext(context);       accin_i.setContext(context);
-        snp_i.setContext(context);      crk_i.setContext(context);        
+        id_i.setContext(context);       acc_i.setContext(context);
+        ngb_count_i.setContext(context);      
         
+        ngb_list_i_temp.setContext(context); 
+        
+        iParticleResults.setContext(context);
+         
         return 0;
       }
       
@@ -178,19 +198,18 @@ namespace sapporo2 {
         predictKernel.setContext(context);
         evalgravKernel.setContext(context);
         reduceForces.setContext(context);
-	  
+
         copyJParticles.load_source(filename, "");
         predictKernel.load_source(filename, "");
         evalgravKernel.load_source(filename, "");
         reduceForces.load_source(filename, "");
-	  
+  
         cerr << "Kernel files found .. building compute kernels! \n";
   
         copyJParticles.create("dev_copy_particles");
         predictKernel.create("dev_predictor");
         evalgravKernel.create("dev_evaluate_gravity");
         reduceForces.create("dev_reduce_forces");
-        
        
         return 0;
       }
@@ -201,86 +220,121 @@ namespace sapporo2 {
       {
         nj_local = nj;
   
+        int njExtraForPipes = nj;
+        //Required temporary memory items before reducing:  NTHREADS*NBLOCKS
+        if(NTHREADS*NBLOCKS > nj)
+          njExtraForPipes = NTHREADS*NBLOCKS;
+        
        
         //J-particle allocation
-        pPos_j.allocate(nj, false);                    
-        pos_j.allocate(nj, false);   
-        address_j.allocate(nj, false);      
+        pPos_j.allocate(nj,     false);                    
+        pos_j.allocate(nj,      false);   
+        address_j.allocate(nj,  false);      
         
 
         if(integrationOrder > GRAPE5)
         {
-          acc_j.allocate(nj, false);
-          jrk_j.allocate(nj, false); 
-          id_j.allocate(nj, false);
-          t_j.allocate(nj, false);       
-          vel_j.allocate(nj, false); 
-          pVel_j.allocate(nj, false);
+          acc_j.allocate(nj,    false);
+          jrk_j.allocate(nj,    false); 
+          id_j.allocate(nj,     false);
+          t_j.allocate(nj,      false);       
+          vel_j.allocate(nj,    false); 
+          pVel_j.allocate(nj,   false);
         
           if(integrationOrder > FOURTH)
           {
-            snp_j.allocate(nj, false);    
-            crk_j.allocate(nj, false); 
+            snp_j.allocate(nj,  false);    
+            crk_j.allocate(nj,  false); 
             pAcc_j.allocate(nj, false); 
           }
         }
         
-        //TODO make this pinned memory since the communicate with the host        
+        //TODO make the temp buffers pinned memory since the communicate with the host        
         pos_j_temp.allocate(nj, false);       
-        
+        acc_j_temp.allocate(njExtraForPipes, false); //Also used for acc_i_temp
 
         if(integrationOrder > GRAPE5)
         {
-          t_j_temp.allocate(nj, false);         id_j_temp.allocate(nj, false);  
-          acc_j_temp.allocate(nj, false);       jrk_j_temp.allocate(nj, false); 
-          vel_j_temp.allocate(nj, false); 
+          t_j_temp.allocate(nj,    false);       id_j_temp.allocate(nj,  false);  
+          
+          vel_j_temp.allocate(njExtraForPipes, false); //Also used for ds2_min_i_temp          
+          jrk_j_temp.allocate(njExtraForPipes, false); //Also used for jrk_i_temp
+                    
         
           if(integrationOrder > FOURTH)
           {
-            snp_j_temp.allocate(nj, false);       crk_j_temp.allocate(nj, false); 
+            snp_j_temp.allocate(njExtraForPipes, false); //Also used for snp_i_temp
+            crk_j_temp.allocate(nj, false); 
           }                
         }
         
-        //i particle TODO copied it from sap1, need to check how and why
+
         //TODO make this pinned memory since the communicate with the host
-        pos_i.allocate(n_pipes, false);   
-        
-        acc_i.allocate(n_pipes *      NBLOCKS, false, false);   
-        accin_i.allocate(n_pipes *    NBLOCKS, false, false);   
+        pos_i.allocate(n_pipes           , false);   
+
 
         if(integrationOrder > GRAPE5)
         {
-          vel_i.allocate(n_pipes * (1 + NBLOCKS), false);   
-          jrk_i.allocate(n_pipes *      NBLOCKS, false);
-          id_i.allocate (n_pipes *      NBLOCKS, false);   
-          ds_i.allocate(n_pipes, false);             
-      
-          if(integrationOrder > FOURTH)
-          {
-            snp_i.allocate(n_pipes *      NBLOCKS, false);
-            crk_i.allocate(n_pipes *      NBLOCKS, false);          
-          }  
+          vel_i.allocate(n_pipes,  false);   
+          id_i.allocate (n_pipes,  false);   
+          ds_i.allocate(n_pipes,   false);        
+          
+          ngb_count_i.allocate(n_pipes,  false);  
+          acc_i.allocate(n_pipes           , false, false);             
         }  
         
-
-//         int ngbMem =  (n_pipes*(NGB_PP + 1) + n_pipes*NBLOCKS*(NGB_PP+1)); //TODO check / change!
-        int ngbMem =  (NTHREADS*(NGB_PP + 1) + NTHREADS*NBLOCKS*(NGB_PP+1)); //TODO check / change!
-        ngb_list_i.allocate(ngbMem, false);   
+        //acc (2nd), jrk (4th), snap (6th), crp (8th order)
+        int niItems = n_pipes + n_pipes*integrationOrder;
+        iParticleResults.allocate(niItems, false);        
         
-       return 0;
+
+        int ngbMem =  n_pipes*(NGB_PP); //Required for final NGB List     
+        ngb_list_i.allocate(ngbMem, false);  
+        
+        ngbMem =  NTHREADS*NBLOCKS*(NGB_PP); //Required for temporary NGB List   
+        ngb_list_i_temp.allocate(ngbMem, false);
+        
+        //Set the temp memory buffers for the partial i-particle results
+        acc_i_temp        = acc_j_temp;
+        
+        if(integrationOrder > GRAPE5)
+        {
+          jrk_i_temp        = jrk_j_temp;
+          ds2_min_i_temp    = vel_j_temp;  
+          ngb_count_i_temp  = id_j_temp;
+          if(integrationOrder > FOURTH)
+          {
+            snp_i_temp        = snp_j_temp; //6th and 8th order
+          }
+        }
+        
+        
+        return 0;
       }
       
       int reallocJParticles(int nj)
       {
+        const int  flags    = 0;
+        const bool copyBack = false;   //Host content is newer than device so no copy
+        
+        int njExtraForPipes = nj;
+        //Required temporary memory items before reducing:  NTHREADS*NBLOCKS
+        if(NTHREADS*NBLOCKS > nj)
+          njExtraForPipes = NTHREADS*NBLOCKS;
+        
+        
         //J-particle allocation
-        pPos_j.realloc(nj, false);  
-        pos_j.realloc(nj, false);       
-        address_j.realloc(nj, false, false);  //Host content is newer than device so no copy
+        pPos_j.realloc   (nj, flags);  
+        pos_j.realloc    (nj, flags);       
+        address_j.realloc(nj, flags, copyBack);
+        
+//TODO         Hier gebleven met opruimn
+        
         if(integrationOrder > GRAPE5)
         {
           pVel_j.realloc(nj, false);
         
-          t_j.realloc(nj, false);         id_j.realloc(nj, false);
+          t_j.realloc(nj,   false);         id_j.realloc(nj, false);
           vel_j.realloc(nj, false); 
           acc_j.realloc(nj, false);       jrk_j.realloc(nj, false); 
           if(integrationOrder > FOURTH)
@@ -296,14 +350,27 @@ namespace sapporo2 {
         
         if(integrationOrder > GRAPE5)
         {
-          t_j_temp.realloc(nj, false,   false);         id_j_temp.realloc(nj, false, false);  
-          vel_j_temp.realloc(nj, false, false); 
-          acc_j_temp.realloc(nj, false, false);       jrk_j_temp.realloc(nj, false , false); 
+          t_j_temp.realloc(nj, false,   false);         id_j_temp.realloc(njExtraForPipes, false, false);  
+          vel_j_temp.realloc(njExtraForPipes, false, false); 
+          acc_j_temp.realloc(nj, false, false);       jrk_j_temp.realloc(njExtraForPipes, false , false); 
         
           if(integrationOrder > FOURTH)
           {
-            snp_j_temp.realloc(nj, false, false);       crk_j_temp.realloc(nj, false, false); 
+            snp_j_temp.realloc(njExtraForPipes, false, false);       crk_j_temp.realloc(nj, false, false); 
           }  
+        }        
+        
+        //Reset the temporary i-particle result buffers
+        acc_i_temp        = acc_j_temp;
+        if(integrationOrder > GRAPE5)
+        {
+          jrk_i_temp        = jrk_j_temp;
+          ds2_min_i_temp    = vel_j_temp;  
+          ngb_count_i_temp  = id_j_temp;
+          if(integrationOrder > FOURTH)
+          {
+            snp_i_temp        = snp_j_temp; //6th and 8th order
+          }
         }        
         
         return 0;

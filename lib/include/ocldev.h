@@ -328,18 +328,27 @@ namespace dev {
     cl_context       Context;
     cl_command_queue CommandQueue;
     bool ContextFlag;
-
+    
+    bool *memSet;       //Trick to prevent double crashes if memory is shared
+    
     size_t n;
     cl_mem DeviceMem;
     cl_mem_flags DeviceMemFlags;
     std::vector<T> HostMem;
+    
+    void        *tempDeviceMemPtr; //Used when we use an offsetted memory index    
 
     void ocl_free() {
-      if (n > 0) {
+      if(memSet == NULL) return;      
+      if(n == 0) return;
+   
+      if (n > 0 &&  memSet[0]) {
 	assert(ContextFlag);
 	oclSafeCall(clReleaseMemObject(DeviceMem));
 	HostMem.clear();
 	n = 0;
+        
+        memSet[0] = false; 
       }
     }
 
@@ -348,10 +357,12 @@ namespace dev {
       Context      = context;
       CommandQueue = command_queue;
       ContextFlag  = true;
+      if(memSet == NULL)
+        memSet = new bool[1];    
     }
 
   public:
-    memory() :  ContextFlag(false), n(0) {};
+    memory() :  ContextFlag(false), n(0) {memSet = new bool[1];};
     memory(class context &c) :  ContextFlag(false), n(0){setContext(c);}
     memory(class context &c, const int _n, const cl_mem_flags flags = CL_MEM_READ_WRITE) :  ContextFlag(false), n(0) {
       setContext(c);
@@ -373,7 +384,8 @@ namespace dev {
       if (n > 0) ocl_free();
 
       assert(ContextFlag);
-
+      
+      memSet[0] = true;
 
       if(pinned)
 	      flags |= CL_MEM_ALLOC_HOST_PTR;
@@ -539,6 +551,7 @@ namespace dev {
     const cl_mem& get_device_mem() const {return DeviceMem;}
     void*   p() const {return (void*)&DeviceMem;}
     void*   ptr() const {return p();}
+    
     size_t size() const {return n;}
 
     const cl_context&       get_context()       const {return Context;}

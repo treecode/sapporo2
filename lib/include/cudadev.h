@@ -243,18 +243,23 @@ namespace dev {
     std::vector<T> HostMem;
     
     T           *HostMemPinned;
+    
+    bool *memSet;       //Trick to prevent double crashes if memory is shared
 
     void cuda_free() {
-      if (n > 0) {
+      if (n > 0 && memSet[0]) {
 	assert(ContextFlag);
+
 	cuSafeCall(cuMemFree(DeviceMem));
 	HostMem.clear();
         HostMem.resize(0);
         if(pinned)
         {
           cuSafeCall(cuMemFreeHost((void*)HostMemPinned));
+          HostMemPinned = NULL;
         }
-	n = 0;
+	n         = 0;
+        memSet[0] = false;
       }
     }
 
@@ -280,8 +285,9 @@ namespace dev {
       setContext(x.get_context(), x.get_command_queue());
       allocate(_n, flags);
     }
-    ~memory() {cuda_free();}
-
+    ~memory() {
+      cuda_free();
+    }
 
     void setContext(const context &c) { setContext(c.get_context(), c.get_command_queue());  }
 
@@ -289,6 +295,9 @@ namespace dev {
 
     void allocate(const int _n, const int flags = 0, bool pinned = false) {
       assert(ContextFlag);
+      
+      memSet = new bool[1];
+      memSet[0] = true;
 
       if (n > 0) cuda_free();
       n = _n;
@@ -312,7 +321,7 @@ namespace dev {
       assert(ContextFlag);
       
       DeviceMemFlags = flags; //make compiler happy
-
+      
       if(_n != n  && _n > 0)
       {
         //We want more memory, increase size on host, copy
@@ -512,6 +521,7 @@ namespace dev {
     const CUdeviceptr& get_device_mem() {return DeviceMem;}
     void*   p() {return (void*)&DeviceMem;}
     void* ptr() {return p();}
+ 
     size_t size(){return n;}
 
     const CUcontext& get_context() const {return Context;}
@@ -546,7 +556,7 @@ namespace dev {
     int computeMode;
     
     int CommandQueue; //Note this variable is not used only to prevent compiler warnings
-
+    
     void clean() {
       KernelName     = (char*)malloc(256);
       KernelFilename = (char*)malloc(1024);
@@ -635,7 +645,6 @@ namespace dev {
     void load_source(const char *kernel_name, const char *subfolder,
                      const char *compilerOptions = "",
                      const int maxrregcount = -1,
-//                      const int architecture = CU_TARGET_COMPUTE_11) {
                      const int architecture = CU_TARGET_COMPUTE_13) {
 
       assert(ContextFlag);
@@ -724,7 +733,7 @@ namespace dev {
 
 
     //NVIDIA macro
-#define ALIGN_UP(offset, alignment) (offset) = ((offset) + (alignment) - 1) & ~((alignment) -1)
+    #define ALIGN_UP(offset, alignment) (offset) = ((offset) + (alignment) - 1) & ~((alignment) -1)
     //'size'  is used for dynamic shared memory
     //Cuda does not have a function like clSetKernelArg
     //therefore we keep track of a vector with arguments
@@ -833,7 +842,6 @@ namespace dev {
 
       globalWork[0] = nx_blocks*nx_threads;  globalWork[1] = ny_blocks;
       localWork [0] = nx_threads;      localWork[1] = ny_threads;
-//       setWork(globalWork, localWork);
 
       GlobalWork.resize(3);
       LocalWork.resize(3);
@@ -950,7 +958,7 @@ namespace dev {
     
     
     void wait() const {
-      cudaThreadSynchronize();
+      cuCtxSynchronize();
       CUT_CHECK_ERROR("oops...");
     }
 
