@@ -335,6 +335,8 @@ namespace dev {
     cl_mem DeviceMem;
     cl_mem_flags DeviceMemFlags;
     std::vector<T> HostMem;
+    
+    void        *tempDeviceMemPtr; //Used when we use an offsetted memory index    
 
     void ocl_free() {
       if(memSet == NULL) return;      
@@ -549,6 +551,7 @@ namespace dev {
     const cl_mem& get_device_mem() const {return DeviceMem;}
     void*   p() const {return (void*)&DeviceMem;}
     void*   ptr() const {return p();}
+    
     size_t size() const {return n;}
 
     const cl_context&       get_context()       const {return Context;}

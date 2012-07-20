@@ -92,17 +92,15 @@ namespace sapporo2 {
       //in variables
       dev::memory<double4> pos_i;        //position       
       dev::memory<double4> vel_i;        //velocity
-      dev::memory<double4> accin_i;      //acceleration for 6th and 8th order
+      dev::memory<double4> acc_i;       //acceleration for 6th and 8th order
       
       //out variables
-      dev::memory<double4> acc_i;        //acceleration
-      dev::memory<double4> jrk_i;        //jerk
-      dev::memory<double4> snp_i;        //Snap for 6th and 8th order
-      dev::memory<double4> crk_i;        //Crack for 6th and 8th order
       dev::memory<double>  ds_i;         //minimal distance
       dev::memory<int>     id_i;         //particle id
       dev::memory<int>     ngb_count_i;  //neighbour count
       dev::memory<int>     ngb_list_i;   //neighbour list
+      
+      dev::memory<double4> iParticleResults; //The combined buffer containing the force results
       
       
       //Temporary results for the i-particles, NOTE we re-use
@@ -111,7 +109,6 @@ namespace sapporo2 {
       //jrk_j_temp  --> jrk_i_temp
       //storage for ds2min vel_j_temp --> ds2_min
       //snap_j_temp --> snp_i_temp
-      //ngb_list_i ---> ??
       //id_j_temp  ---> ngb_count_i_temp
       dev::memory<double4> acc_i_temp;
       dev::memory<double4> jrk_i_temp;
@@ -120,6 +117,7 @@ namespace sapporo2 {
       dev::memory<int>     ngb_count_i_temp; 
       dev::memory<int>     ngb_list_i_temp;   //neighbour list
    
+      
      
       
       int dev_ni;                       //Number of ni particles on the device
@@ -181,13 +179,13 @@ namespace sapporo2 {
         
         //i-particle buffers
         pos_i.setContext(context);      vel_i.setContext(context);
-        acc_i.setContext(context);      jrk_i.setContext(context);
         ds_i.setContext(context);       ngb_list_i.setContext(context);
-        id_i.setContext(context);       accin_i.setContext(context);
-        snp_i.setContext(context);      crk_i.setContext(context);  
+        id_i.setContext(context);       acc_i.setContext(context);
         ngb_count_i.setContext(context);      
         
-        ngb_list_i_temp.setContext(context);      
+        ngb_list_i_temp.setContext(context); 
+        
+        iParticleResults.setContext(context);
          
         return 0;
       }
@@ -272,26 +270,22 @@ namespace sapporo2 {
         
 
         //TODO make this pinned memory since the communicate with the host
-        pos_i.allocate  (n_pipes             , false);   
-        acc_i.allocate  (n_pipes             , false, false);   
-        accin_i.allocate(n_pipes             , false, false);   
+        pos_i.allocate(n_pipes           , false);   
+
 
         if(integrationOrder > GRAPE5)
         {
           vel_i.allocate(n_pipes,  false);   
-          jrk_i.allocate(n_pipes,  false);
           id_i.allocate (n_pipes,  false);   
           ds_i.allocate(n_pipes,   false);        
           
-          ngb_count_i.allocate(n_pipes,  false);
-          
-      
-          if(integrationOrder > FOURTH)
-          {
-            snp_i.allocate(n_pipes, false);
-            crk_i.allocate(n_pipes, false);          
-          }  
+          ngb_count_i.allocate(n_pipes,  false);  
+          acc_i.allocate(n_pipes           , false, false);             
         }  
+        
+        //acc (2nd), jrk (4th), snap (6th), crp (8th order)
+        int niItems = n_pipes + n_pipes*integrationOrder;
+        iParticleResults.allocate(niItems, false);        
         
 
         int ngbMem =  n_pipes*(NGB_PP); //Required for final NGB List     
@@ -314,7 +308,6 @@ namespace sapporo2 {
           }
         }
         
-
         
         return 0;
       }

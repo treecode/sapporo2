@@ -434,14 +434,14 @@ __kernel void dev_reduce_forces(
                                 __global double  *ds_i_temp,
                                 __global int     *ngb_count_i_temp,
                                 __global int     *ngb_list_i_temp,
-                                __global double4 *acc_i,
-                                __global double4 *jrk_i,
+                                __global double4 *result_i,
                                 __global double  *ds_i,
                                 __global int     *ngb_count_i,
                                 __global int     *ngb_list,                                
                                          int     offset_ni_idx,
+                                         int     ni_total,
                                __global double4 *snp_i_temp,
-                               __global double4 *snp_i,
+
                                __local  double4 *shared_acc ) {
 
 //    extern __shared__ float4 shared_acc[];
@@ -504,9 +504,9 @@ __kernel void dev_reduce_forces(
     jrk0.w = (int)(jrk0.w);
 
     //Store the results
-    acc_i       [blockIdx_x + offset_ni_idx] = acc0;
-    jrk_i       [blockIdx_x + offset_ni_idx] = jrk0;
-    snp_i       [blockIdx_x + offset_ni_idx] = snp0;
+    result_i    [blockIdx_x + offset_ni_idx]              = acc0;
+    result_i    [blockIdx_x + offset_ni_idx + ni_total]   = jrk0;
+    result_i    [blockIdx_x + offset_ni_idx + 2*ni_total] = snp0;
     ds_i        [blockIdx_x + offset_ni_idx] = ds0;
     ngb_count_i [blockIdx_x + offset_ni_idx] = n_ngb;
   }
@@ -527,22 +527,6 @@ __kernel void dev_reduce_forces(
         ngb_list[offset + i] = ngb_list_i_temp[ngb_index + i];
     }
   }
-
-//   offset += blockIdx_x * NGB_PP + shared_ofs[threadIdx_x];
-//   int offset_end;
-//   if (threadIdx_x == 0) {
-//     shared_ofs[0] = offset + NGB_PP;
-//     ngb_list[offset++] = n_ngb;
-//   }
-//   __syncthreads();
-// 
-//   offset_end = shared_ofs[0];
-// 
-//   n_ngb = shared_ngb[threadIdx_x];
-//   for (int i = 0; i < n_ngb; i++)
-//     if (offset + i < offset_end)
-//       ngb_list[offset + i] = ngb_list[ngb_index + 1 + i];
-
 }
 
 

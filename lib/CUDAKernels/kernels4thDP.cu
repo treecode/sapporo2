@@ -112,9 +112,6 @@ __device__ __forceinline__ void body_body_interaction(inout double2    &ds2_min,
  */ 
 
 
-//TODO should make this depending on if we use Fermi or GT80/GT200
-//#define ajc(i, j) (i + __mul24(blockDim.x,j))
-#define ajc(i, j) (i + blockDim.x*j)
 extern "C" __global__ void
 //__launch_bounds__(NTHREADS)
 dev_evaluate_gravity(
@@ -261,7 +258,7 @@ dev_evaluate_gravity(
       acc.w += acc1.w;
      
       shared_ofs[addr] = min(n_ngb, NGB_PB);
-      n_ngb += shared_ngb[addr];
+      n_ngb           += shared_ngb[addr];
     }
     n_ngb  = min(n_ngb, NGB_PB);
   }
@@ -271,7 +268,7 @@ dev_evaluate_gravity(
   if (ty == 0) 
   {
     //Convert results to double and write
-    const int addr = bx*blockDim.x + tx;
+    const int addr       = bx*blockDim.x + tx;
     ds2min_i[      addr] = ds2_min;
     acc_i[         addr] = acc.to_double4();
     jrk_i[         addr] = jerkNew;
@@ -316,12 +313,12 @@ extern "C" __global__ void dev_reduce_forces(
                               double              *ds_i_temp,
                               int                 *ngb_count_i_temp,
                               int                 *ngb_list_i_temp,
-                              __out double4    *acc_i, 
-                              __out double4    *jrk_i, 
+                              __out double4    *result_i, 
                               __out double     *ds_i,
                               __out int        *ngb_count_i,
                               __out int        *ngb_list,
-                              int               offset_ni_idx
+                              int               offset_ni_idx,
+                              int               ni_total
 ) {
   
   extern __shared__ double4 shared_acc[];
@@ -381,7 +378,7 @@ extern "C" __global__ void dev_reduce_forces(
       }
 
       shared_ofs[i] = min(n_ngb, NGB_PP);
-      n_ngb += shared_ngb[i];
+      n_ngb        += shared_ngb[i];
     }
     n_ngb = min(n_ngb, NGB_PP);
 
@@ -389,8 +386,8 @@ extern "C" __global__ void dev_reduce_forces(
     jrk0.w = (int)(jrk0.w);
 
     //Store the results
-    acc_i       [blockIdx.x + offset_ni_idx] = acc0;
-    jrk_i       [blockIdx.x + offset_ni_idx] = jrk0;
+    result_i    [blockIdx.x + offset_ni_idx]            = acc0;
+    result_i    [blockIdx.x + offset_ni_idx + ni_total] = jrk0;
     ds_i        [blockIdx.x + offset_ni_idx] = ds0;
     ngb_count_i [blockIdx.x + offset_ni_idx] = n_ngb;
   }
@@ -413,20 +410,6 @@ extern "C" __global__ void dev_reduce_forces(
     }
   }
 
-//   offset += blockIdx.x * NGB_PP + shared_ofs[threadIdx.x];
-//   int offset_end;
-//   if (threadIdx.x == 0) {
-//     shared_ofs[0] = offset + NGB_PP;
-//     ngb_list[offset++] = n_ngb;
-//   }
-//   __syncthreads();
-//   
-//   offset_end = shared_ofs[0];
-//   
-//   n_ngb = shared_ngb[threadIdx.x];
-//   for (int i = 0; i < n_ngb; i++)
-//     if (offset + i < offset_end)
-//       ngb_list[offset + i] = ngb_list[ngb_index + 1 + i];
 
   
 }

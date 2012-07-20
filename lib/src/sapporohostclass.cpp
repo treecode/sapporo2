@@ -392,7 +392,7 @@ void sapporo::startGravCalc(int    nj,          int ni,
       
       if(integrationOrder > FOURTH)
       {
-        deviceList[toDevice]->accin_i[i] = make_double4(a[i][0], a[i][1], a[i][2], 0);
+        deviceList[toDevice]->acc_i[i] = make_double4(a[i][0], a[i][1], a[i][2], 0);
       }      
     }
 
@@ -426,7 +426,7 @@ void sapporo::startGravCalc(int    nj,          int ni,
         memcpy(&deviceList[i]->id_i[0],  &deviceList[0]->id_i[0],  sizeof(int)     * ni);  
         
         if(integrationOrder > FOURTH)
-          memcpy(&deviceList[i]->accin_i[0], &deviceList[0]->accin_i[0], sizeof(double4) * ni);        
+          memcpy(&deviceList[i]->acc_i[0], &deviceList[0]->acc_i[0], sizeof(double4) * ni);        
       }
   }
   
@@ -513,24 +513,25 @@ int sapporo::getGravResults(int nj, int ni,
 
   //Reduce the data from the different devices into one final results
   for (int dev = 0; dev < nCUDAdevices; dev++) {
-    for (int i = 0; i < ni; i++) {
-
-      pot[i]    += deviceList[dev]->acc_i[i].w;
-      acc[i][0] += deviceList[dev]->acc_i[i].x;
-      acc[i][1] += deviceList[dev]->acc_i[i].y;
-      acc[i][2] += deviceList[dev]->acc_i[i].z;
+    for (int i = 0; i < ni; i++)
+     {
+        pot[i]    += deviceList[dev]->iParticleResults[i].w;
+        acc[i][0] += deviceList[dev]->iParticleResults[i].x;
+        acc[i][1] += deviceList[dev]->iParticleResults[i].y;
+        acc[i][2] += deviceList[dev]->iParticleResults[i].z;      
 
       if(integrationOrder > GRAPE5)
       {
-        jerk[i][0] += deviceList[dev]->jrk_i[i].x;
-        jerk[i][1] += deviceList[dev]->jrk_i[i].y;
-        jerk[i][2] += deviceList[dev]->jrk_i[i].z;
+        jerk[i][0] += deviceList[dev]->iParticleResults[ni+i].x;
+        jerk[i][1] += deviceList[dev]->iParticleResults[ni+i].y;
+        jerk[i][2] += deviceList[dev]->iParticleResults[ni+i].z;
+
         double  ds  = deviceList[dev]->ds_i[i];        
 
         if(ngb)   //If we want nearest neighbour
         {
           if (ds < ds_min[i]) {
-            int nnb     = (int)(deviceList[dev]->jrk_i[i].w);
+            int nnb     = (int)(deviceList[dev]->iParticleResults[ni+i].w);
             nnbindex[i] = nnb;
             ds_min[i]   = ds;
             if(dsmin_i != NULL)
@@ -541,12 +542,14 @@ int sapporo::getGravResults(int nj, int ni,
 
       if(integrationOrder > FOURTH)
       {
-        snp[i][0] += deviceList[dev]->snp_i[i].x;
-        snp[i][1] += deviceList[dev]->snp_i[i].y;
-        snp[i][2] += deviceList[dev]->snp_i[i].z;
-        crk[i][0] += deviceList[dev]->crk_i[i].x;
-        crk[i][1] += deviceList[dev]->crk_i[i].y;
-        crk[i][2] += deviceList[dev]->crk_i[i].z;
+        snp[i][0] += deviceList[dev]->iParticleResults[2*ni+i].x;
+        snp[i][1] += deviceList[dev]->iParticleResults[2*ni+i].y;
+        snp[i][2] += deviceList[dev]->iParticleResults[2*ni+i].z;
+
+        // Possible 8th order extension        
+        // crk[i][0] += deviceList[dev]->crk_i[i].x;
+        // crk[i][1] += deviceList[dev]->crk_i[i].y;
+        // crk[i][2] += deviceList[dev]->crk_i[i].z;
       }
       
       
@@ -699,7 +702,7 @@ void sapporo::send_i_particles_to_device(int ni)
     
     if(integrationOrder > FOURTH)
     {
-      sapdevice->accin_i.h2d(ni);
+      sapdevice->acc_i.h2d(ni);
     }
   }
 
@@ -712,19 +715,12 @@ void sapporo::retrieve_i_particle_results(int ni)
   #endif
 
   //Called inside an OMP parallel section
-  
-  sapdevice->acc_i.d2h(ni);
+    
+  sapdevice->iParticleResults.d2h(ni + ni*integrationOrder);
   
   if(integrationOrder > GRAPE5)
   {
-    sapdevice->jrk_i.d2h(ni);
     sapdevice->ds_i.d2h(ni);
-
-    if(integrationOrder > FOURTH)
-    {
-      sapdevice->snp_i.d2h(ni);
-      sapdevice->crk_i.d2h(ni);
-    }
   }
   
 }//retrieve i particles
@@ -1217,7 +1213,7 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
 
     if(integrationOrder > FOURTH)
     {
-      sapdevice->evalgravKernel.set_arg<void*>(argIdx++, sapdevice->accin_i.ptr());
+      sapdevice->evalgravKernel.set_arg<void*>(argIdx++, sapdevice->acc_i.ptr());
       sapdevice->evalgravKernel.set_arg<void*>(argIdx++, sapdevice->pAcc_j.ptr());
       sapdevice->evalgravKernel.set_arg<void*>(argIdx++, sapdevice->snp_i_temp.ptr());
       sapdevice->evalgravKernel.set_arg<int>(argIdx++, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
@@ -1230,15 +1226,13 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
     nthreads        = (sapdevice->get_NBLOCKS());
     int nblocks     = ni;
 
-//     int tempNTHREADS  = NTHREADS;
-//     int tempNGBOffset = NGB_PB*(sapdevice->get_NBLOCKS())*NTHREADS;
 
     argIdx = 0;
 
     if(integrationOrder == GRAPE5)
     {
       sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->acc_i_temp.ptr()); 
-      sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->acc_i.ptr());
+      sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->iParticleResults.ptr());
       sapdevice->reduceForces.set_arg<int  >(argIdx++, &ni_offset);  //offset  
       sapdevice->reduceForces.set_arg<int>(argIdx++, NULL, (sharedMemSizeReduce)/sizeof(int));  //Shared memory
     }
@@ -1250,13 +1244,14 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
       sapdevice->reduceForces.set_arg<void*>(argIdx++,  sapdevice->ngb_count_i_temp.ptr());
       sapdevice->reduceForces.set_arg<void*>(argIdx++,  sapdevice->ngb_list_i_temp.ptr());
       
-      sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->acc_i.ptr());
-      sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->jrk_i.ptr());
+      sapdevice->reduceForces.set_arg<void*>(argIdx++,  sapdevice->iParticleResults.ptr()); //Combined results buffer
+
       sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->ds_i.ptr());
       sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->ngb_count_i.ptr());
       sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->ngb_list_i.ptr());
     
-      sapdevice->reduceForces.set_arg<int  >(argIdx++, &ni_offset);  //offset     
+      sapdevice->reduceForces.set_arg<int  >(argIdx++, &ni_offset); //offset     
+      sapdevice->reduceForces.set_arg<int  >(argIdx++, &ni_total);  //Total number to determine offset inside kernel       
       if(integrationOrder == FOURTH)
         sapdevice->reduceForces.set_arg<int>(argIdx++, NULL, (sharedMemSizeReduce)/sizeof(int));  //Shared memory
     }
@@ -1264,7 +1259,6 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
     if(integrationOrder > FOURTH)
     {
       sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->snp_i_temp.ptr());
-      sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->snp_i.ptr());
       sapdevice->reduceForces.set_arg<int>(argIdx++, NULL, (sharedMemSizeReduce)/sizeof(int));  //Shared memory
     }
     sapdevice->reduceForces.setWork_threadblock2D(nthreads, 1, nblocks, 1);

@@ -411,12 +411,12 @@ extern "C" __global__ void dev_reduce_forces(
     double              *ds_i_temp,
     int                 *ngb_count_i_temp,
     int                 *ngb_list_i_temp,
-    __out double4    *acc_i, 
-    __out double4    *jrk_i, 
+    __out double4    *result_i, 
     __out double     *ds_i,
     __out int        *ngb_count_i,
     __out int        *ngb_list,
-    int               offset_ni_idx
+    int               offset_ni_idx,
+    int               ni_total
 ) {
   //  extern __shared__ float4 shared_acc[];
   //   __shared__ char shared_mem[NBLOCKS*(2*sizeof(float4) + 3*sizeof(int))];
@@ -441,7 +441,7 @@ extern "C" __global__ void dev_reduce_forces(
   //Convert the data to floats
   shared_acc[threadIdx.x] = (float4){acc_i_temp[index].x, acc_i_temp[index].y, acc_i_temp[index].z, acc_i_temp[index].w};
   shared_jrk[threadIdx.x] = (float4){jrk_i_temp[index].x, jrk_i_temp[index].y, jrk_i_temp[index].z, jrk_i_temp[index].w};
-//   shared_ds [threadIdx.x] = (float)vel_i[offset_ds + index].w;  //TODO JB dont we miss the value at vel_i[0 + x] this way?
+
   shared_ds [threadIdx.x] = (float)ds_i_temp[index];  
 
 
@@ -485,8 +485,8 @@ extern "C" __global__ void dev_reduce_forces(
 
     //Store the results
 
-    acc_i       [blockIdx.x + offset_ni_idx] = (double4){acc0.x, acc0.y, acc0.z, acc0.w};
-    jrk_i       [blockIdx.x + offset_ni_idx] = (double4){jrk0.x, jrk0.y, jrk0.z, jrk0.w};;
+    result_i    [blockIdx.x + offset_ni_idx]            = (double4){acc0.x, acc0.y, acc0.z, acc0.w};   
+    result_i    [blockIdx.x + offset_ni_idx + ni_total] = (double4){jrk0.x, jrk0.y, jrk0.z, jrk0.w};
     ds_i        [blockIdx.x + offset_ni_idx] = (double) ds0;
     ngb_count_i [blockIdx.x + offset_ni_idx] = n_ngb;
 

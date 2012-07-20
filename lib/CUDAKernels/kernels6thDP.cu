@@ -346,14 +346,13 @@ extern "C" __global__ void dev_reduce_forces(
                                         double           *ds_i_temp,
                                         int              *ngb_count_i_temp,
                                         int              *ngb_list_i_temp,
-                                        __out double4    *acc_i, 
-                                        __out double4    *jrk_i, 
+                                        __out double4    *result_i, 
                                         __out double     *ds_i,
                                         __out int        *ngb_count_i,
                                         __out int        *ngb_list,
                                         int               offset_ni_idx,
-                                        double4          *snp_i_temp,
-                                        __out double4    *snp_i) {
+                                        int               ni_total,
+                                        double4          *snp_i_temp) {
   //NBLOCKS*(3*sizeof(double4) + 2*sizeof(int) + sizeof(double));   
   extern __shared__ double4 shared_acc[];
   double4 *shared_jrk = (double4*)&shared_acc[blockDim.x];
@@ -422,9 +421,9 @@ extern "C" __global__ void dev_reduce_forces(
 
 
     //Store the results
-    acc_i       [blockIdx.x + offset_ni_idx] = acc0;
-    jrk_i       [blockIdx.x + offset_ni_idx] = jrk0;
-    snp_i       [blockIdx.x + offset_ni_idx] = snp0;
+    result_i    [blockIdx.x + offset_ni_idx]              = acc0;
+    result_i    [blockIdx.x + offset_ni_idx + ni_total]   = jrk0;
+    result_i    [blockIdx.x + offset_ni_idx + 2*ni_total] = snp0;
     ds_i        [blockIdx.x + offset_ni_idx] = ds0;
     ngb_count_i [blockIdx.x + offset_ni_idx] = n_ngb;
   }

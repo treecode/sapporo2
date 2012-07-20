@@ -398,12 +398,12 @@ __kernel void dev_reduce_forces(
                                 __global double  *ds_i_temp,
                                 __global int     *ngb_count_i_temp,
                                 __global int     *ngb_list_i_temp,
-                                __global double4 *acc_i,
-                                __global double4 *jrk_i,
+                                __global double4 *result_i,
                                 __global double  *ds_i,
                                 __global int     *ngb_count_i,
                                 __global int     *ngb_list,                                
                                          int     offset_ni_idx,
+                                         int     ni_total,
                                __local  double4  *shared_acc ) {
   
 //    extern __shared__ float4 shared_acc[];
@@ -458,8 +458,8 @@ __kernel void dev_reduce_forces(
 //     jrk0.w = (int)__float_as_int(jrk0.w);
 
     //Store the results
-    acc_i       [blockIdx_x + offset_ni_idx] = acc0;
-    jrk_i       [blockIdx_x + offset_ni_idx] = jrk0;
+    result_i       [blockIdx_x + offset_ni_idx]            = acc0;
+    result_i       [blockIdx_x + offset_ni_idx + ni_total] = jrk0;
     ds_i        [blockIdx_x + offset_ni_idx] = ds0;
     ngb_count_i [blockIdx_x + offset_ni_idx] = n_ngb;
   }

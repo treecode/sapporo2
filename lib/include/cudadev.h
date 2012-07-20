@@ -521,6 +521,7 @@ namespace dev {
     const CUdeviceptr& get_device_mem() {return DeviceMem;}
     void*   p() {return (void*)&DeviceMem;}
     void* ptr() {return p();}
+ 
     size_t size(){return n;}
 
     const CUcontext& get_context() const {return Context;}
@@ -644,7 +645,6 @@ namespace dev {
     void load_source(const char *kernel_name, const char *subfolder,
                      const char *compilerOptions = "",
                      const int maxrregcount = -1,
-//                      const int architecture = CU_TARGET_COMPUTE_11) {
                      const int architecture = CU_TARGET_COMPUTE_13) {
 
       assert(ContextFlag);
@@ -733,7 +733,7 @@ namespace dev {
 
 
     //NVIDIA macro
-#define ALIGN_UP(offset, alignment) (offset) = ((offset) + (alignment) - 1) & ~((alignment) -1)
+    #define ALIGN_UP(offset, alignment) (offset) = ((offset) + (alignment) - 1) & ~((alignment) -1)
     //'size'  is used for dynamic shared memory
     //Cuda does not have a function like clSetKernelArg
     //therefore we keep track of a vector with arguments
@@ -842,7 +842,6 @@ namespace dev {
 
       globalWork[0] = nx_blocks*nx_threads;  globalWork[1] = ny_blocks;
       localWork [0] = nx_threads;      localWork[1] = ny_threads;
-//       setWork(globalWork, localWork);
 
       GlobalWork.resize(3);
       LocalWork.resize(3);
