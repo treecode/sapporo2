@@ -628,7 +628,7 @@ int sapporo::read_ngb_list(int cluster_id)
   {
     for (int j = 0; j < ni[dev]; j++)
     {
-      if(deviceList[dev]->ngb_list_i[j*NGB_PP]  >= NGB_PP) {
+      if(deviceList[dev]->ngb_list_i[j*NGB_PB]  >= NGB_PB) {
         overflow = true;
       }
     }
@@ -659,7 +659,7 @@ int sapporo::get_ngb_list(int cluster_id,
   bool overflow = false;
   nblen         = 0;
   for (int i = 0; i < nCUDAdevices; i++) {
-    int offset  = NGB_PP*ipipe;
+    int offset  = NGB_PB*ipipe;
     int len     = deviceList[i]->ngb_count_i[ipipe];
     
     memcpy(nbl+nblen, &deviceList[i]->ngb_list_i[offset], sizeof(int)*min(len, maxlength - len));
@@ -956,9 +956,9 @@ int sapporo::fetch_ngb_list_from_device() {
 
   //Copy only the active ni particles  
   int ni = sapdevice->dev_ni;
-//   sapdevice->ngb_list_i.d2h(ni*NGB_PP, NTHREADS*NGB_PB*(sapdevice->get_NBLOCKS()));
+//   sapdevice->ngb_list_i.d2h(ni*NGB_PB, NTHREADS*NGB_PB*(sapdevice->get_NBLOCKS()));
   sapdevice->ngb_count_i.d2h(ni);
-  sapdevice->ngb_list_i.d2h(ni*NGB_PP);
+  sapdevice->ngb_list_i.d2h(ni*NGB_PB);
 
   return ni;
 }
@@ -1179,7 +1179,7 @@ void sapporo::evaluate_gravity_host(int ni_total, int nj)
         continue;       //Skip self-gravity
       
       //Compute the force
-      const double3 dr = {pos_j.x - pos_i.x, pos_j.y - pos_i.y, pos_j.z - pos_i.z};
+      const double4 dr = make_double4(pos_j.x - pos_i.x, pos_j.y - pos_i.y, pos_j.z - pos_i.z, 0);
       const double ds2 = ((dr.x*dr.x + (dr.y*dr.y)) + dr.z*dr.z);
       
       const double inv_ds = 1.0/sqrt(ds2+EPS2);
@@ -1196,7 +1196,7 @@ void sapporo::evaluate_gravity_host(int ni_total, int nj)
       acc_i.w += (-1.0)*minvr1;
 
       //Jerk
-      const double3 dv = {vel_j.x - vel_i.x, vel_j.y - vel_i.y, vel_j.z -  vel_i.z};
+      const double4 dv = make_double4(vel_j.x - vel_i.x, vel_j.y - vel_i.y, vel_j.z -  vel_i.z, 0);
       const double drdv = (-3.0) * (minvr3*invr2) * (dr.x*dv.x + dr.y*dv.y + dr.z*dv.z);
 
       jrk_i.x += minvr3 * dv.x + drdv * dr.x;  

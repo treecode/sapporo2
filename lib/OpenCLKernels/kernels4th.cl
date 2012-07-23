@@ -25,7 +25,6 @@ CUDA DoubleSingle kernels
 
 //#include "include/defines.h"
 
-#define NGB_PP 256
 #define NGB_PB 256
 
 #define inout
@@ -487,7 +486,7 @@ __kernel void dev_reduce_forces(
   if (threadIdx_x == 0) {
     float4 acc0 = shared_acc[0];
     float4 jrk0 = shared_jrk[0];
-    float  ds0 = shared_ds [0];
+    float  ds0  = shared_ds [0];
 
     for (int i = 1; i < blockDim_x; i++) {
       acc0.x += shared_acc[i].x;
@@ -504,11 +503,11 @@ __kernel void dev_reduce_forces(
         jrk0.w = shared_jrk[i].w;
       }
 
-      shared_ofs[i] = min(n_ngb, NGB_PP);
+      shared_ofs[i] = min(n_ngb, NGB_PB);
       n_ngb += shared_ngb[i];
 
     }
-    n_ngb = min(n_ngb, NGB_PP);
+    n_ngb = min(n_ngb, NGB_PB);
 
     #if CAST
       jrk0.w = (int)(jrk0.w);
@@ -526,8 +525,8 @@ __kernel void dev_reduce_forces(
 
   //Compute the offset of where to store the data and where to read it from
   //Store is based on ni, where to read it from is based on thread/block
-  int offset     = (offset_ni_idx + blockIdx_x)  * NGB_PP + shared_ofs[threadIdx_x];
-  int offset_end = (offset_ni_idx + blockIdx_x)  * NGB_PP + NGB_PP;
+  int offset     = (offset_ni_idx + blockIdx_x)  * NGB_PB + shared_ofs[threadIdx_x];
+  int offset_end = (offset_ni_idx + blockIdx_x)  * NGB_PB + NGB_PB;
   int ngb_index  = threadIdx_x * NGB_PB + blockIdx_x * NGB_PB*blockDim_x;
 
 

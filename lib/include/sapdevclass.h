@@ -280,10 +280,10 @@ namespace sapporo2 {
         iParticleResults.allocate(niItems, false, pinned);        
         
 
-        int ngbMem =  n_pipes*(NGB_PP); //Required for final NGB List     
+        int ngbMem =  n_pipes*(NGB_PB); //Required for final NGB List     
         ngb_list_i.allocate(ngbMem, false);  
         
-        ngbMem =  NTHREADS*NBLOCKS*(NGB_PP); //Required for temporary NGB List   
+        ngbMem =  NTHREADS*NBLOCKS*(NGB_PB); //Required for temporary NGB List   
         ngb_list_i_temp.allocate(ngbMem, false, pinned);
         
         //Set the temp memory buffers for the partial i-particle results

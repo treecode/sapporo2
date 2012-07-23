@@ -572,7 +572,7 @@ dev_evaluate_gravity_allinone(
   //Write the neighbour list
   {
     for (int i = 0; i < n_ngb; i++) 
-      ngb_list[(index * NGB_PP) + i] = local_ngb_list[i];
+      ngb_list[(index * NGB_PB) + i] = local_ngb_list[i];
   }
 }
 
@@ -651,11 +651,11 @@ extern "C" __global__ void dev_reduce_forces(
         jrk0.w = shared_jrk[i].w;
       }
 
-      shared_ofs[i] = min(n_ngb, NGB_PP);
+      shared_ofs[i] = min(n_ngb, NGB_PB);
       n_ngb        += shared_ngb[i];
 
     }
-    n_ngb = min(n_ngb, NGB_PP);
+    n_ngb = min(n_ngb, NGB_PB);
 
     jrk0.w = (int)__float_as_int(jrk0.w);
 
@@ -672,8 +672,8 @@ extern "C" __global__ void dev_reduce_forces(
 
   //Compute the offset of where to store the data and where to read it from
   //Store is based on ni, where to read it from is based on thread/block
-  int offset     = (offset_ni_idx + blockIdx.x)  * NGB_PP + shared_ofs[threadIdx.x];
-  int offset_end = (offset_ni_idx + blockIdx.x)  * NGB_PP + NGB_PP;
+  int offset     = (offset_ni_idx + blockIdx.x)  * NGB_PB + shared_ofs[threadIdx.x];
+  int offset_end = (offset_ni_idx + blockIdx.x)  * NGB_PB + NGB_PB;
   int ngb_index  = threadIdx.x * NGB_PB + blockIdx.x * NGB_PB*blockDim.x;
 
 

@@ -412,10 +412,10 @@ extern "C" __global__ void dev_reduce_forces(
         jrk0.w = shared_jrk[i].w;
       }
 
-      shared_ofs[i] = min(n_ngb, NGB_PP);
+      shared_ofs[i] = min(n_ngb, NGB_PB);
       n_ngb += shared_ngb[i];
     }
-    n_ngb = min(n_ngb, NGB_PP);
+    n_ngb = min(n_ngb, NGB_PB);
 
     jrk0.w = (int)(jrk0.w);
 
@@ -431,8 +431,8 @@ extern "C" __global__ void dev_reduce_forces(
 
   //Compute the offset of where to store the data and where to read it from
   //Store is based on ni, where to read it from is based on thread/block
-  int offset     = (offset_ni_idx + blockIdx.x)  * NGB_PP + shared_ofs[threadIdx.x];
-  int offset_end = (offset_ni_idx + blockIdx.x)  * NGB_PP + NGB_PP;
+  int offset     = (offset_ni_idx + blockIdx.x)  * NGB_PB + shared_ofs[threadIdx.x];
+  int offset_end = (offset_ni_idx + blockIdx.x)  * NGB_PB + NGB_PB;
   int ngb_index  = threadIdx.x * NGB_PB + blockIdx.x * NGB_PB*blockDim.x;
 
 
@@ -445,21 +445,6 @@ extern "C" __global__ void dev_reduce_forces(
     }
   }
 
-//   offset += blockIdx.x * NGB_PP + shared_ofs[threadIdx.x];
-//   int offset_end;
-//   if (threadIdx.x == 0) {
-//     shared_ofs[0] = offset + NGB_PP; 
-//     ngb_list[offset++] = n_ngb;
-//   }
-//   __syncthreads();
-// 
-//   offset_end = shared_ofs[0];
-//   
-//   n_ngb = shared_ngb[threadIdx.x];
-// 
-//   for (int i = 0; i < n_ngb; i++)
-//     if (offset + i < offset_end)
-//       ngb_list[offset + i] = ngb_list[ngb_index + 1 + i];
 }
 
 

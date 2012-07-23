@@ -7,7 +7,6 @@
 
 
 //Neighbour information
-#define NGB_PP 256
 #define NGB_PB 256
 #define NGB
 

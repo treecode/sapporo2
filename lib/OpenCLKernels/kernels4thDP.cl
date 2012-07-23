@@ -23,7 +23,6 @@ OpenCL Double Precision
 
 //#include "include/defines.h"
 
-#define NGB_PP 256
 #define NGB_PB 256
 
 #define inout
@@ -448,11 +447,11 @@ __kernel void dev_reduce_forces(
         jrk0.w = shared_jrk[i].w;
       }
 
-      shared_ofs[i] = min(n_ngb, NGB_PP);
+      shared_ofs[i] = min(n_ngb, NGB_PB);
       n_ngb += shared_ngb[i];
 
     }
-    n_ngb = min(n_ngb, NGB_PP);
+    n_ngb = min(n_ngb, NGB_PB);
 
     jrk0.w = (int)(jrk0.w);
 //     jrk0.w = (int)__float_as_int(jrk0.w);
@@ -467,8 +466,8 @@ __kernel void dev_reduce_forces(
 
   //Compute the offset of where to store the data and where to read it from
   //Store is based on ni, where to read it from is based on thread/block
-  int offset     = (offset_ni_idx + blockIdx_x)  * NGB_PP + shared_ofs[threadIdx_x];
-  int offset_end = (offset_ni_idx + blockIdx_x)  * NGB_PP + NGB_PP;
+  int offset     = (offset_ni_idx + blockIdx_x)  * NGB_PB + shared_ofs[threadIdx_x];
+  int offset_end = (offset_ni_idx + blockIdx_x)  * NGB_PB + NGB_PB;
   int ngb_index  = threadIdx_x * NGB_PB + blockIdx_x * NGB_PB*blockDim_x;
 
 
@@ -481,10 +480,10 @@ __kernel void dev_reduce_forces(
     }
   }
 
-//   offset += blockIdx_x * NGB_PP + shared_ofs[threadIdx_x];
+//   offset += blockIdx_x * NGB_PB + shared_ofs[threadIdx_x];
 //   int offset_end;
 //   if (threadIdx_x == 0) {
-//     shared_ofs[0] = offset + NGB_PP;
+//     shared_ofs[0] = offset + NGB_PB;
 //     ngb_list[offset++] = n_ngb;
 //   }
 //   __syncthreads();
