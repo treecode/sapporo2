@@ -10,7 +10,7 @@ SAPLIB2 = sapporo_ocl
 SAPLIB = lib$(SAPLIB2).a
 
 CUDA_TK  = /usr/local/cuda
-
+#CUDA_TK  = /opt/AMDAPP/
 
 OFLAGS = -g -Wall -Wextra -Wstrict-aliasing=2 -fopenmp 
 CXXFLAGS =  -fPIC $(OFLAGS) -D_OCL_

@@ -6,6 +6,7 @@ F90  = ifort
 .SUFFIXES: .o .cpp .ptx .cu
 
 CUDA_TK  = /usr/local/cuda
+#CUDA_TK  = /opt/AMDAPP/
 
 #OFLAGS = -O3 -g -Wall -fopenmp  -D_OCL_
 #OFLAGS = -O3 -g -Wall -fopenmp
