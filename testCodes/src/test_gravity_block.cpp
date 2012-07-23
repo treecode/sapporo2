@@ -109,8 +109,6 @@ int main(int argc, char *argv[]) {
   }
   
  
-  
-
   grav.set_time(0);
   
  
@@ -173,6 +171,9 @@ int main(int argc, char *argv[]) {
            temp_pvel[0], temp_pvel[1],temp_pvel[2]);           
      }
     }
+    
+//     exit(0);
+    
     /* end test */       
 //      exit(0);
     

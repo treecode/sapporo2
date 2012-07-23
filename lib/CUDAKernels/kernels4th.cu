@@ -219,9 +219,7 @@ __device__ __forceinline__ void body_body_interaction(
 }
 
 
-//TODO should make this depending on if we use Fermi or GT80/GT200
-// #define ajc(i, j) (i + __mul24(blockDim.x,j))
-// #define ajc(i, j) (i + blockDim.x*j)
+
 extern "C" __global__ void
 //__launch_bounds__(NTHREADS)
 dev_evaluate_gravity(
@@ -399,6 +397,184 @@ dev_evaluate_gravity(
   }
 }
 
+
+extern "C" __global__ void
+//__launch_bounds__(NTHREADS)
+dev_evaluate_gravity_allinone(
+    const int        nj_total, 
+//     const int        nj,
+    const int        ni_offset,
+    const int        ni_total,
+    const double4    *pos_j, 
+    const double4    *pos_i,
+    __out double4    *result_i, 
+    const double     EPS2_d,
+    const double4    *vel_j,
+    const int        *id_j,                                     
+    const double4    *vel_i,                                     
+    const int        *id_i,
+    __out double     *ds2min_i,
+    __out int        *ngb_count_i,
+    __out int        *ngb_list) 
+{
+
+  extern __shared__ DS4 shared_pos[];
+  
+  const int tx = threadIdx.x;
+  const int ty = threadIdx.y;
+  const int bx =  blockIdx.x;
+  const int Dim = blockDim.x*blockDim.y;
+  const uint index = bx * blockDim.x + tx;
+
+
+  float4 *shared_vel = (float4*)&shared_pos[Dim];
+
+
+  int local_ngb_list[NGB_PB + 1];
+  int n_ngb = 0;
+
+  const float EPS2 = (float)EPS2_d;
+
+  DS4 pos;
+  pos.x = to_DS(pos_i[index].x); 
+  pos.y = to_DS(pos_i[index].y);
+  pos.z = to_DS(pos_i[index].z);
+  pos.w = to_DS(pos_i[index].w);
+
+
+  //Combine the particle id into the w part of the position
+//   pos.w.y = __int_as_float(id_i[tx]);
+  const int iID    = id_i[index];
+
+  const float4 vel = make_float4(vel_i[index].x, vel_i[index].y,
+                                 vel_i[index].z, vel_i[index].w);
+
+  const float LARGEnum = 1.0e10f;
+
+  float2  ds2_min2;
+  ds2_min2.x = LARGEnum;
+  ds2_min2.y = __int_as_float(-1);
+
+  devForce acc   (0.0f);
+  float4   jrk = {0.0f, 0.0f, 0.0f, 0.0f};
+
+  int tile = 0;
+//   int ni    = bx * (nj*blockDim.y) + nj*ty;
+  const int offy = blockDim.x*ty;
+
+  int ni = 0;              //Test
+  int nend = nj_total;     //Test
+  for (int i = ni; i < nend; i += blockDim.x)        //Test
+//   for (int i = ni; i < ni+nj; i += blockDim.x)
+  {
+    const int addr = offy + tx;
+
+    if (i + tx < nj_total) 
+    {
+      const double4 jp     = pos_j[i + tx];
+      shared_pos[addr].x   = to_DS(jp.x);
+      shared_pos[addr].y   = to_DS(jp.y);
+      shared_pos[addr].z   = to_DS(jp.z);
+      shared_pos[addr].w   = to_DS(jp.w);
+      shared_pos[addr].w.y = __int_as_float(id_j[i + tx]);
+      shared_vel[addr]     = (float4){vel_j[i + tx].x, 
+                                      vel_j[i + tx].y, 
+                                      vel_j[i + tx].z, 
+                                      vel_j[i + tx].w};
+    } else {
+      shared_pos[addr].x = (float2){LARGEnum, 0.0f};
+      shared_pos[addr].y = (float2){LARGEnum, 0.0f};
+      shared_pos[addr].z = (float2){LARGEnum, 0.0f};
+      shared_pos[addr].w = (float2){0.0f,  -1.0f}; 
+      shared_vel[addr]   = (float4){0.0f, 0.0f, 0.0f, 0.0f};
+    }
+
+    __syncthreads();
+
+//     const int j  = min(nj - tile*blockDim.x, blockDim.x);
+    const int j  = min(nj_total - tile*blockDim.x, blockDim.x); //Test
+    const int j1 = j & (-32);
+
+#pragma unroll 32
+    for (int k = 0; k < j1; k++) 
+      body_body_interaction(ds2_min2, n_ngb, local_ngb_list,
+          acc, jrk, pos, vel,
+          shared_pos[offy+k], shared_vel[offy+k], EPS2,iID);
+
+    for (int k = j1; k < j; k++) 
+      body_body_interaction(ds2_min2, n_ngb, local_ngb_list,
+          acc, jrk, pos, vel,
+          shared_pos[offy+k], shared_vel[offy+k], EPS2,iID);
+
+    __syncthreads();
+
+    tile++;
+  } //end while
+
+
+  float4 *shared_acc = (float4*)&shared_pos[0];
+  float4 *shared_jrk = (float4*)&shared_acc[Dim];
+  int    *shared_ngb = (int*   )&shared_jrk[Dim];
+  int    *shared_ofs = (int*   )&shared_ngb[Dim];
+  float  *shared_ds  = (float* )&shared_ofs[Dim];
+
+  float ds2_min = ds2_min2.x;
+  jrk.w         = ds2_min2.y;
+
+  const int addr = offy + tx;
+  shared_acc[addr] = acc.to_float4();
+  shared_jrk[addr] = jrk;
+  shared_ngb[addr] = n_ngb;
+  shared_ofs[addr] = 0;
+  shared_ds [addr] = ds2_min;
+  __syncthreads();
+
+  if (ty == 0)
+  {
+    for (int i = blockDim.x; i < Dim; i += blockDim.x)
+    {
+      const int addr = i + tx;
+      float4 acc1 = shared_acc[addr];
+      float4 jrk1 = shared_jrk[addr];
+      float  ds1  = shared_ds [addr];
+
+      acc.x += acc1.x;
+      acc.y += acc1.y;
+      acc.z += acc1.z;
+      acc.w += acc1.w;
+
+      jrk.x += jrk1.x;
+      jrk.y += jrk1.y;
+      jrk.z += jrk1.z;
+
+      if (ds1  < ds2_min) 
+      {
+        jrk.w   = jrk1.w;
+        ds2_min  = ds1;
+      }
+
+      shared_ofs[addr] = min(n_ngb, NGB_PB);
+      n_ngb           += shared_ngb[addr];
+    }
+    n_ngb  = min(n_ngb, NGB_PB);
+  }
+  __syncthreads();
+
+  if (ty == 0) 
+  {
+    //Convert results to double and write
+    ds2min_i[index]              = ds2_min;
+    result_i[index]              = acc.to_double4();
+    result_i[index+ni_total]     = (double4){jrk.x, jrk.y, jrk.z, (int)__float_as_int(jrk.w)};
+    ngb_count_i[index]           = n_ngb;
+  }
+
+  //Write the neighbour list
+  {
+    for (int i = 0; i < n_ngb; i++) 
+      ngb_list[(index * NGB_PP) + i] = local_ngb_list[i];
+  }
+}
 
 
 /*

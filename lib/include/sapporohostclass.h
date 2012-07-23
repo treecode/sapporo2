@@ -115,10 +115,17 @@ protected:
   double evaluate_gravity(int, int);
   
   
+  //Host prediction and evaluation functions
+  void predictJParticles_host(int nj);
+  void evaluate_gravity_host(int ni_total, int nj);
+  
+  
   bool isFirstSend;             //Used to check if this is the first time we sent particles to the
                                 //device, so we have to allocate memory
   int integrationOrder;         //Order of the integrator we use, should be set during open call, default is fourth order
   int integrationPrecision;     //The precision of the integrator for shared-memory calculation. Default is DEFAULT
+  
+  bool executedOnHost;
   
 
 public:

@@ -133,11 +133,50 @@ int sapporo::open(std::string kernelFile, int *devices,
     //Allocate initial memory for 16k particles per device
     sapdevice->allocateMemory(16384, get_n_pipes());
     nj_max = 16384;
+    
+    
+    
 
   }//end pragma omp parallel
 
   //Used to store j-memory particle counters
   jCopyInformation.resize(nCUDAdevices);
+  
+  
+  
+#if 0
+    //Do some tuning!
+    //First fill the ids with valid info otherwise testing might fail
+    
+    for(int i=0; i < 1024; i++) //Make sure npipes > 1024 :-)
+    {
+       sapdevice->id_i[i] = i;
+       sapdevice->id_j[i] = i;
+    }
+
+   
+    for(int k=1; k < 1024; k+=128)
+    {
+      for(int m=1; m < 1024; m+=128)
+      {
+        double t0 = get_time();
+        evaluate_gravity(k, m);  
+        sapdevice->reduceForces.wait();
+//         retrieve_i_particle_results(ni);
+        fprintf(stderr, "TEST DEV: Took: nj: %d  ni: %d \t %g\n", m, k,   get_time() - t0);
+      }
+    }
+    for(int k=1; k < 1024; k+=128)
+    {
+      for(int m=1; m < 1024; m+=128)
+      {
+        double t0 = get_time();
+        evaluate_gravity_host(k, m);  
+        fprintf(stderr, "TEST CPU: Took: nj: %d  ni: %d \t %g\n", m, k,   get_time() - t0);
+      }
+    }    
+    exit(0);
+#endif
 
   return 0;
 }
@@ -511,6 +550,7 @@ int sapporo::getGravResults(int nj, int ni,
     retrieve_i_particle_results(ni);
   }
 
+
   //Reduce the data from the different devices into one final results
   for (int dev = 0; dev < nCUDAdevices; dev++) {
     for (int i = 0; i < ni; i++)
@@ -713,6 +753,8 @@ void sapporo::retrieve_i_particle_results(int ni)
   #ifdef DEBUG_PRINT
     cerr << "retrieve_i_particle_results\n";
   #endif
+    
+  if(executedOnHost == true) return;
 
   //Called inside an OMP parallel section
     
@@ -1050,6 +1092,126 @@ void sapporo::predictJParticles(int nj)
 }
 
 
+void sapporo::predictJParticles_host(int nj)
+{
+
+  if(integrationOrder == GRAPE5)
+  {
+    //GRAPE5 has no prediction
+    memcpy(&sapdevice->pPos_j[0], &sapdevice->pos_j[0], sizeof(double4) * nj);
+    return;
+  }
+
+  
+  
+  double4 snp = make_double4(0,0,0,0);
+  double4 crk = make_double4(0,0,0,0);
+  
+  for(int i=0; i < nj; i++)
+  {
+    double dt  = t_i  - sapdevice->t_j[i].x;
+    double dt2 = (1./2.)*dt;
+    double dt3 = (1./3.)*dt;
+    double dt4 = (1./4.)*dt;
+    double dt5 = (1./5.)*dt;
+
+    double4  pos         = sapdevice->pos_j[i];
+    double4  vel         = sapdevice->vel_j[i];
+    double4  acc         = sapdevice->acc_j[i];
+    double4  jrk         = sapdevice->jrk_j[i];
+    
+    if(integrationOrder > FOURTH)
+    {
+      snp         = sapdevice->snp_j[i];
+      crk         = sapdevice->crk_j[i];
+    }
+
+    //Positions
+    pos.x += dt  * (vel.x +  dt2 * (acc.x + dt3 * (jrk.x + 
+             dt4 * (snp.x +  dt5 * (crk.x)))));
+    pos.y += dt  * (vel.y +  dt2 * (acc.y + dt3 * (jrk.y + 
+             dt4 * (snp.y +  dt5 * (crk.y)))));
+    pos.z += dt  * (vel.z +  dt2 * (acc.z + dt3 * (jrk.z + 
+             dt4 * (snp.z +  dt5 * (crk.z)))));
+    sapdevice->pPos_j[i] = pos;
+    
+
+    //Velocities
+    vel.x += dt * (acc.x + dt2 * (jrk.x + 
+             dt3 * (snp.x +  dt4 * (crk.x))));
+    vel.y += dt * (acc.y + dt2 * (jrk.y + 
+             dt3 * (snp.y +  dt4 * (crk.y))));
+    vel.z += dt * (acc.z + dt2 * (jrk.z + 
+             dt3 * (snp.z +  dt4 * (crk.z))));
+    sapdevice->pVel_j[i] = vel;
+
+
+    if(integrationOrder > FOURTH)
+    {
+      //Accelerations
+      acc.x += dt * (jrk.x + dt2 * (snp.x +  dt3 * (crk.x)));
+      acc.y += dt * (jrk.y + dt2 * (snp.y +  dt3 * (crk.y)));
+      acc.z += dt * (jrk.z + dt2 * (snp.z +  dt3 * (crk.z)));
+      sapdevice->pAcc_j[i] = acc;
+    }
+  }//for i  
+  
+}
+
+void sapporo::evaluate_gravity_host(int ni_total, int nj)
+{
+  executedOnHost = true;
+  for(int i=0; i < ni_total; i++)
+  {
+    double4 pos_i = sapdevice->pos_i[i];
+    double4 vel_i = sapdevice->vel_i[i];
+    int      id_i = sapdevice->id_i[i];
+    double4 acc_i = make_double4(0,0,0,0);
+    double4 jrk_i = make_double4(0,0,0,0);    
+    
+    for(int j=0; j < nj; j++)
+    {
+      double4 pos_j = sapdevice->pPos_j[j];
+      double4 vel_j = sapdevice->pVel_j[j];
+      int      id_j = sapdevice->id_j  [j];
+      
+      if(id_i == id_j)
+        continue;       //Skip self-gravity
+      
+      //Compute the force
+      const double3 dr = {pos_j.x - pos_i.x, pos_j.y - pos_i.y, pos_j.z - pos_i.z};
+      const double ds2 = ((dr.x*dr.x + (dr.y*dr.y)) + dr.z*dr.z);
+      
+      const double inv_ds = 1.0/sqrt(ds2+EPS2);
+
+      const double mass   = pos_j.w;
+      const double minvr1 = mass*inv_ds; 
+      const double  invr2 = inv_ds*inv_ds; 
+      const double minvr3 = minvr1*invr2;
+
+      // Acceleration
+      acc_i.x += minvr3 * dr.x;
+      acc_i.y += minvr3 * dr.y;
+      acc_i.z += minvr3 * dr.z;
+      acc_i.w += (-1.0)*minvr1;
+
+      //Jerk
+      const double3 dv = {vel_j.x - vel_i.x, vel_j.y - vel_i.y, vel_j.z -  vel_i.z};
+      const double drdv = (-3.0) * (minvr3*invr2) * (dr.x*dv.x + dr.y*dv.y + dr.z*dv.z);
+
+      jrk_i.x += minvr3 * dv.x + drdv * dr.x;  
+      jrk_i.y += minvr3 * dv.y + drdv * dr.y;
+      jrk_i.z += minvr3 * dv.z + drdv * dr.z;     
+    }//for j
+    
+    sapdevice->iParticleResults[i         ] = acc_i;
+    sapdevice->iParticleResults[i+ni_total] = jrk_i;
+    
+  }//for i
+  
+}
+
+
 double sapporo::evaluate_gravity(int ni_total, int nj)
 {
   //This function is called inside an omp parallel section  
@@ -1057,6 +1219,9 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
     cerr << "evaluate_gravity ni: " << ni_total << "\tnj: " << nj << endl;
   #endif
 
+  //Use this to indicate we did gravity on the host, to disable memory copies
+  executedOnHost = false; 
+    
   //ni is the number of i-particles that is set and for which we compute the force
   //nj is the current number of j-particles that are used as sources
 
@@ -1066,6 +1231,45 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
 
   //Execute prediction if necessary
   predictJParticles(nj);
+  
+  
+    
+#if 0
+  {
+    int sharedMemSizeEval    = 2*NTHREADS*(sizeof(DS4) + sizeof(float4)); //4th order Double Single
+    int argIdx = 0;
+    
+    int ni_offset = 0;
+    
+    sapdevice->evalgravKernelCombined.set_arg<int  >(argIdx++, &nj);      //Total number of j particles
+    sapdevice->evalgravKernelCombined.set_arg<int  >(argIdx++, &ni_offset);    
+    sapdevice->evalgravKernelCombined.set_arg<int  >(argIdx++, &ni_total);   
+
+    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->pPos_j.ptr());
+    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->pos_i.ptr());
+    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->iParticleResults.ptr());
+    sapdevice->evalgravKernelCombined.set_arg<double>(argIdx++, &EPS2);
+
+    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->pVel_j.ptr());
+    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->id_j.ptr());
+    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->vel_i.ptr());
+    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->id_i.ptr());
+    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->ds_i.ptr());     
+    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->ngb_count_i.ptr());
+    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->ngb_list_i.ptr());
+    sapdevice->evalgravKernelCombined.set_arg<int>(argIdx++, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
+
+    sapdevice->evalgravKernelCombined.setWork_1D(2*NTHREADS, ni_total); //Default
+    sapdevice->evalgravKernelCombined.execute();
+    
+    
+    return 0.0;
+    
+  }
+  
+#endif  
+  
+  
 
    
   int ni = 0;

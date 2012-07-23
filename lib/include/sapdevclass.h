@@ -59,6 +59,7 @@ namespace sapporo2 {
       dev::kernel     predictKernel;
       dev::kernel     evalgravKernel;
       dev::kernel     reduceForces;
+//       dev::kernel     evalgravKernelCombined;
       
 
       //Memory
@@ -184,11 +185,13 @@ namespace sapporo2 {
         predictKernel.setContext(context);
         evalgravKernel.setContext(context);
         reduceForces.setContext(context);
+//         evalgravKernelCombined.setContext(context);
 
         copyJParticles.load_source(filename, "");
         predictKernel.load_source(filename, "");
         evalgravKernel.load_source(filename, "");
         reduceForces.load_source(filename, "");
+//         evalgravKernelCombined.load_source(filename, "");
   
         cerr << "Kernel files found .. building compute kernels! \n";
   
@@ -196,6 +199,7 @@ namespace sapporo2 {
         predictKernel.create("dev_predictor");
         evalgravKernel.create("dev_evaluate_gravity");
         reduceForces.create("dev_reduce_forces");
+//         evalgravKernelCombined.create("dev_evaluate_gravity_allinone");
        
         return 0;
       }

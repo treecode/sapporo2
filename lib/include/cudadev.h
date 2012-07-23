@@ -958,8 +958,7 @@ namespace dev {
     
     
     void wait() const {
-      cuCtxSynchronize();
-      CUT_CHECK_ERROR("oops...");
+      cuSafeCall(cuCtxSynchronize());
     }
 
   };
