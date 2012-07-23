@@ -132,11 +132,7 @@ int sapporo::open(std::string kernelFile, int *devices,
     
     //Allocate initial memory for 16k particles per device
     sapdevice->allocateMemory(16384, get_n_pipes());
-    nj_max = 16384;
-    
-    
-    
-
+    nj_max = 16384;    
   }//end pragma omp parallel
 
   //Used to store j-memory particle counters
@@ -145,37 +141,49 @@ int sapporo::open(std::string kernelFile, int *devices,
   
   
 #if 0
-    //Do some tuning!
-    //First fill the ids with valid info otherwise testing might fail
-    
-    for(int i=0; i < 1024; i++) //Make sure npipes > 1024 :-)
+  #ifdef CPU_SUPPORT
+    //At the start of the program figure out at which point the GPU will be faster
+    //than the host CPU. This can either be based on ni, nj, or on a combination 
+    //of ni*nj = #interactions. Then if #interactions < GPUOptimal do host compute
+    //otherwise do GPU compute
+  
+    #pragma omp parallel
     {
-       sapdevice->id_i[i] = i;
-       sapdevice->id_j[i] = i;
-    }
+      //First fill the ids with valid info otherwise testing might fail, if all ids are 0
+      for(int i=0; i < 1024; i++) 
+      {
+        if(i < NPIPES) sapdevice->id_i[i] = i;
+        if(i < nj_max) sapdevice->id_j[i] = i;
+      }
 
-   
-    for(int k=1; k < 1024; k+=128)
-    {
-      for(int m=1; m < 1024; m+=128)
+    
+      for(int k=1; k < 1024; k+=128)
       {
-        double t0 = get_time();
-        evaluate_gravity(k, m);  
-        sapdevice->reduceForces.wait();
-//         retrieve_i_particle_results(ni);
-        fprintf(stderr, "TEST DEV: Took: nj: %d  ni: %d \t %g\n", m, k,   get_time() - t0);
+        for(int m=1; m < 1024; m+=128)
+        {
+          double t0 = get_time();
+          evaluate_gravity(k, m);  
+          sapdevice->reduceForces.wait();
+  //         retrieve_i_particle_results(ni);
+          fprintf(stderr, "TEST DEV: Took: nj: %d  ni: %d \t %g\n", m, k,   get_time() - t0);
+        }
       }
+      for(int k=1; k < 1024; k+=128)
+      {
+        for(int m=1; m < 1024; m+=128)
+        {
+          double t0 = get_time();
+          evaluate_gravity_host(k, m);  
+          fprintf(stderr, "TEST CPU: Took: nj: %d  ni: %d \t %g\n", m, k,   get_time() - t0);
+        }
+      }    
+      
+      //TODO set some interaction count number that is the break-even point 
+      //between CPU and GPU computations
+      
     }
-    for(int k=1; k < 1024; k+=128)
-    {
-      for(int m=1; m < 1024; m+=128)
-      {
-        double t0 = get_time();
-        evaluate_gravity_host(k, m);  
-        fprintf(stderr, "TEST CPU: Took: nj: %d  ni: %d \t %g\n", m, k,   get_time() - t0);
-      }
-    }    
     exit(0);
+  #endif
 #endif
 
   return 0;
@@ -327,6 +335,8 @@ int sapporo::set_j_particle(int    address,
   
 
   #ifdef CPU_SUPPORT
+    //Put the new j particles directly in the correct location on the 
+    //host side.
     deviceList[dev]->pos_j[devAddr] = make_double4(x[0], x[1], x[2], mass);
     
     if(integrationOrder > GRAPE5)
