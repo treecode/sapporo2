@@ -1,0 +1,191 @@
+-- Sapporo2, CUDA and OpenCL GRAPE-like library for direct N-Body codes
+
+    Copyright (C) 2009-2012 
+      Jeroen Bédorf    <bedorf@strw.leidenuniv.nl>
+      Evghenii Gaburov <egaburov.work@gmail.com>
+
+--
+
+DESCRIPTION
+
+The Sapporo2 is a GPU library for integrating the gravitational force
+equations. Sapporo2 supports the CUDA and OpenCL execution
+environments. Note that for the OpenCL execution only GPU-devices are
+supported. Sapporo2 can use all available GPUs that are available in
+the device with the use of OpenMP. For inter node (MPI) parallelisation
+the user has to make his own program parallel. There is built in
+support for the GRAPE-5 and GRAPE-6 devices using the interface
+libraries, also included are GPU kernels for 6th order hermite
+computations.
+
+Sapporo2 uses the CUDA-driver API and therefore loads kernels at
+runtime, just like OpenCL compiles the kernels at runtime. This allows
+users to decide the required precision at runtime by selecting the
+appropriate kernel to be used or by creating their own kernels and
+thereby deciding their required precision. All data is stored in
+native double precision on the device memory and send as such to the
+GPU kernels which allows the kernels to work in any floating point
+precision that is requested.
+
+
+Supported devices:
+- All NVIDIA GPUs that support CUDA (or OpenCL) and have support for
+  double precision.
+- AMD ATI GPUs that support OpenCL. We only included scalar kernels
+  and therefore the best performance will be obtained on devices that
+  uses the AMD Graphic Core Next architecture (>= 7XXX series) on
+  devices before this architecture AMD uses a vector architecture and
+  implementing kernels suitable for these devices is left as exercise
+  for the enthusiastic user.
+
+===============================================================================
+
+CONFIGURATION
+
+There are some settings that can be changed in the file
+'include/defines.h'. Most of them are set to some optimal setting by
+default. But the release of new GPU devices or a specific usage can
+have effect on what is the most optimal setting.
+
+To set the maximum number of neighbours that can be stored per
+particle adjust: 
+#define NGB_PB 256
+
+The number NPIPES determines the maximum number of 'i-particles' that
+can be send to the device. The larger this number the less memory
+copies are required when a large number of particles are active in a
+block-time step.
+#define NPIPES        16384
+
+More advanced settings
+
+The number NTHREADS indicates the number of threads that will be used
+when integrating the 'i-particles'. Setting this number too large or
+too small can have severe effect on the efficiency or even the
+executability of the program. Do not change this without testing the
+effect!
+#define NTHREADS      256
+
+The number NBLOCKS_PER_MULTI indicates the number of thread-blocks
+that should be started on a multi-processor on the GPU. Standard we
+included some optimal settings for the current generation of GPUs. The
+library determines at run-time which architecture is used an sets the
+number of blocks accordingly. Only change the default settings if you
+know what you are doing and tested the performance.
+
+The define ENABLE_THREAD_BLOCK_SIZE_OPTIMIZATION is another advanced
+setting. It allows for some extra hand tuned optimizations in the
+thread-block configuration. Since this depends on the used
+device/integrator/precision it requires testing before adjusting this.
+
+===============================================================================
+
+INSTALLATION
+
+With some luck a simple 'make' in the lib folder is sufficient to
+build the library, if not then here are some pointers:
+
+CUDA
+To build the CUDA library; Set the 'CUDA_TK' path to the location
+where the CUDA toolkit is installed e.g.. CUDA_TK = /usr/local/cuda and
+type: 'make' .
+
+OpenCL
+To build the CUDA library; Set the 'CUDA_TK' path to the location
+where the cuda or AMD OpenCL toolkit is installed eg. CUDA_TK =
+/usr/local/cuda or CUDA_TK = /opt/AMDAPP/ and type: 'make -f
+Makefile_ocl' .
+
+Interfaces:
+The library has built-in support for a couple of default interfaces to
+include the library in excising software. You can write and add your
+own interface by adding it to the line: SRC = sapporohostclass.cpp
+sapporoG6lib.cpp sapporoYeblib.cpp sapporoG5lib.cpp sapporo6thlib.cpp
+
+
+Problems:
+no threadprivate directive, indicating that you use an older gcc
+version. Try to upgrade or comment out the line "#pragma omp
+threadprivate(sapdevice)" in src/sapporohostclass.cpp.  Disabling this
+line will however break the multi-GPU capability.
+
+===============================================================================
+
+USAGE
+
+Step 1) Call the 'open' function to initialize the library:
+
+int sapporo::open(std::string kernelFile, int *devices, int nprocs,
+int order, int precision);
+
+kernelFile : The filename of the file that contains the GPU kernel
+	     functions. This is either a ptx,cubin or an cl source file.  
+devices : A pointer to an integer list of devices to use, can be NULL
+	  if nprocs <= 0, see below.
+nprocs : Indicates the number of GPUs to be used, using the following
+         method:
+  	 - If nprocs is < 0 , the driver will try to use abs(nprocs)
+	   devices using which ever device is available content of
+	   'devices' is ignored.
+	 - If nprocs is > 0, 'devices' should contain a list of
+	   deviceIDs (0,1,2,..) that the library will try. If any of
+	   those devices is not available execution will stop.
+	 - If nprocs = 0, the library will try to use as many devices
+	      as available in the system, 'devices' is ignored. 
+order : The integration order of the supplied kernel file, used to
+        determine which buffers to use, shared memory to allocate etc.
+precision : The precision of the integration, determines the amount of
+            shared-memory to be used.
+
+(order and precision or 'advanced' options in case you write your own
+kernels and or use a different than default precision).
+
+Step 2) Set the 'j-particles' using the 'set_j_particle' particle
+functions. Depending on the chosen integration order not all buffers
+have to be set, see the source code in 'src/sapporohostclass.cpp' and
+the library interfaces in 'interfaces/*' and test software in the
+'testCodes' folder for usage examples. Note that the library will
+allocate sufficient memory by itself, but ONLY if particles are send
+'in address order'. So don't start sending with the n'th particle, but
+with the 0'st particle.
+
+Step 3) Optional set the time for the prediction step
+
+Step 4) Time to compute the gravity, so call 'startGravCalc'. A call
+to this function will copy the supplied 'i-particles' to the device,
+copies the 'j-particles' to the device, starts the prediction step and
+the gravity computation steps.  Depending on the chosen integration
+order not all buffers have to be set, see the source code in
+'src/sapporohostclass.cpp' and the library interfaces in
+'interfaces/*' and test software in the 'testCodes' folder for usage
+examples.  Note that function is ASYNCHRONOUS, so after this call you
+can do some CPU work while the GPU is happily computing the
+gravitational forces in the background. Note that you can only send
+'NPIPES' particles!
+
+Step 5) Get the results from the device by calling
+'getGravResults'. This will wait till the GPU is finished with the
+force computation and then copies the results for the 'i-particles'
+back to the host and into the supplied memory buffers. Note that only
+the forces and possibly the nearest neighbour and distance to the
+nearest neighbour is copied back to the host.
+
+Finishing and cleaning up of allocated memory: Always end with a call
+to : close()
+
+---- Optional functions ----
+
+Neighbour information, retrieve neighbour lists using the functions: 
+read_ngb_list, copies the neighbours from the GPU to the host.  
+get_ngb_list, returns the neighbours of the specified i-particle.
+
+
+j-particle information:
+retrieve_predicted_j_particle, returns the predicted position of a specified j-particle
+retrieve_j_particle_state, returns all the properties (including predicted position) of the specified j-particle
+
+(See the source code and examples in 'testCodes' folder for usage
+details of the (optional) functions )
+
+
+

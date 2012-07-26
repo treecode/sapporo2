@@ -22,7 +22,7 @@
 
 
 //The next line will enable some extra hand tuned block-size
-//optimizations. But this can be device/resource dependend and 
+//optimizations. But this can be device/resource dependent and 
 //should only be used if you know that it will work 
 //(test if needed to find out if it works)
 #define ENABLE_THREAD_BLOCK_SIZE_OPTIMIZATION

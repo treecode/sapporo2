@@ -1,0 +1,59 @@
+Sapporo2, test and example programs
+
+This folder contains a set of test and example programs that can
+be used with Sapporo2. 
+
+===============================================================================
+
+BUILD
+
+Set the correct paths to the CUDA toolkit / AMD SDK in the files:
+Makefile and Makefile_ocl (the CUDA_TK variable)
+
+To build the CUDA versions:
+'make'
+
+Tol build the OpenCL versions:
+'make -f Makefile_ocl' 
+
+In both cases make sure you build the matching sapporo library in the 'lib' folder.
+
+Make sure that the GPU kernel sources and ptx files are in a subfolder 'CUDA' can be 
+symlinked from the lib folder. This is done by default in the Makefiles.
+
+===============================================================================
+
+Programs:
+
+test_gravity_block_* ,       tests the 4th order hermite version of the library (grape6 compatible)
+test_gravity_block_g5_*,     tests the 2nd order version of the library (GRAPE5 compatible)
+test_gravity_block_6th_*,    tests the 6th order hermite version of the library.
+test_performance_rangeN* ,   tests the performance on integrating N particles. So computes N*N forces.
+test_performance_blockStep*, tests the performance of the code when using different block-sizes in
+a block-time step method.
+
+===============================================================================
+
+USAGE / Examples
+
+How to start a 4th order test using different precision:
+CUDA, 4th order default
+./test_gravity_block_cuda  
+./test_gravity_block_cuda 16364 -> number of particles is 16384 using CUDA
+./test_gravity_block_ocl  16364 -> number of particles is 16384 using OpenCL
+
+./test_gravity_block_cuda 16364 CUDA/kernels4thDP.ptx 1 1  ->
+  number of particles is 16384 using CUDA, using a full double precision kernel, with 
+  integration order 1 (=FOURTH order) with precision 1 (=DOUBLE precision)
+./test_gravity_block_ocl 16364 OpenCL/kernels4thDP.cl 1 1  ->
+  same as above but now using OpenCL.
+
+Test the N*N performance
+./test_performance_rangeN_cuda -> compute time it takes to integrate forces and retrieve results for the default (=1024) number of particles
+
+./test_performance_rangeN_cuda 131072 -> As above but now with 131072 particles
+./test_performance_rangeN_ocl 131072  -> As above but now using OpenCL
+./test_performance_rangeN_ocl 131072 OpenCL/kernels4thDP.cl 1 1 -> As above but now using full double precision
+
+./test_performance_rangeN_6th_ocl 131072 -> 6th order, 131072 particles using OpenCL
+
