@@ -119,6 +119,8 @@ protected:
   void predictJParticles_host(int nj);
   void evaluate_gravity_host(int ni_total, int nj);
   
+  void evaluate_gravity_host_vector(int ni_total, int nj);
+  
   
   bool isFirstSend;             //Used to check if this is the first time we sent particles to the
                                 //device, so we have to allocate memory

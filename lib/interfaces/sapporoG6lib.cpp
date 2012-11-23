@@ -27,6 +27,9 @@ extern "C" {
     //Open the GPUs
     int res     = grav.open(kernelFile, list, ndev, FOURTH);
     
+//DP    const char *kernelFile2 = "CUDA/kernels4thDP.ptx";     
+//    int res = grav.open(kernelFile2, list, ndev, FOURTH, 1);
+    
     //Read properties and allocate memory buffers
     int n_pipes = grav.get_n_pipes();
     dsmin_i     = (double*)malloc(sizeof(double)*n_pipes);      
@@ -70,10 +73,14 @@ extern "C" {
 
 
   int g6_close_(int *id) { id=id;  return grav.close(); }
-  int g6_npipes_() { return grav.get_n_pipes(); }
+  int g6_npipes_() { 
+//     return 256;
+    return grav.get_n_pipes(); 
+    
+  }
   int g6_set_tunit_(double*) {return 0;}
   int g6_set_xunit_(double*) {return 0;}
-  int g6_set_ti_(int *id, double *ti) {id=id; return  grav.set_time(*ti); }
+  int g6_set_ti_(int *id, double *ti) { id=id; return  grav.set_time(*ti); }
   int g6_set_j_particle_(int *cluster_id,
 			 int *address,
 			 int *index,
@@ -85,6 +92,7 @@ extern "C" {
     //value to 0
     
     cluster_id=cluster_id; //Make compiler happy
+
     
     //multiply the acc and jrk by a factor 2 and 6, for GRAPE compatability    
     acc_i[0] = a2[0]*2; acc_i[1] = a2[1]*2; acc_i[2] = a2[2]*2;

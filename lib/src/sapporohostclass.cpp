@@ -3,6 +3,8 @@
 #include <sys/time.h>
 #include <algorithm>
 
+#include "hostFunc.h"
+
 /*
 
 
@@ -147,13 +149,34 @@ int sapporo::open(std::string kernelFile, int *devices,
     //of ni*nj = #interactions. Then if #interactions < GPUOptimal do host compute
     //otherwise do GPU compute
   
-    #pragma omp parallel
+    //#pragma omp parallel
     {
       //First fill the ids with valid info otherwise testing might fail, if all ids are 0
       for(int i=0; i < 1024; i++) 
       {
-        if(i < NPIPES) sapdevice->id_i[i] = i;
-        if(i < nj_max) sapdevice->id_j[i] = i;
+        if(i < NPIPES)
+        {
+          sapdevice->id_i[i]    = i;
+          sapdevice->pos_i[i].x =  (1.0 - 2.0*drand48());
+          sapdevice->pos_i[i].y =  (1.0 - 2.0*drand48());
+          sapdevice->pos_i[i].z =  (1.0 - 2.0*drand48());
+          sapdevice->pos_i[i].w =  1./1024;
+          sapdevice->vel_i[i].x =  drand48() * 0.1;
+          sapdevice->vel_i[i].y =  drand48() * 0.1;
+          sapdevice->vel_i[i].z =  drand48() * 0.1;
+        }
+  
+        if(i < nj_max)
+        {
+          sapdevice->id_j[i]     = i;
+          sapdevice->pPos_j[i].x =  (1.0 - 2.0*drand48());
+          sapdevice->pPos_j[i].y =  (1.0 - 2.0*drand48());
+          sapdevice->pPos_j[i].z =  (1.0 - 2.0*drand48());
+          sapdevice->pPos_j[i].w =  1./1024;
+          sapdevice->pVel_j[i].x =  drand48() * 0.1;
+          sapdevice->pVel_j[i].y =  drand48() * 0.1;
+          sapdevice->pVel_j[i].z =  drand48() * 0.1;          
+        }
       }
 
     
@@ -174,7 +197,31 @@ int sapporo::open(std::string kernelFile, int *devices,
         {
           double t0 = get_time();
           evaluate_gravity_host(k, m);  
-          fprintf(stderr, "TEST CPU: Took: nj: %d  ni: %d \t %g\n", m, k,   get_time() - t0);
+          
+//           for(int i=0; i < k; i++)
+//           {
+//             fprintf(stderr, "Serial:\t%d (%d,%d)\tAcc: %f %f %f %f \t Jrk; %f %f %f %f \n",
+//                     i,k,m,
+//                     sapdevice->iParticleResults[i         ].x, sapdevice->iParticleResults[i         ].y,
+//                     sapdevice->iParticleResults[i         ].z, sapdevice->iParticleResults[i         ].w,
+//                     sapdevice->iParticleResults[i+k].x, sapdevice->iParticleResults[i+k].y,
+//                     sapdevice->iParticleResults[i+k].z, sapdevice->iParticleResults[i+k].w);
+//           }
+          
+          double t1 = get_time();
+          evaluate_gravity_host_vector(k, m);  
+          fprintf(stderr, "TEST CPU: Took: nj: %d  ni: %d \t serial: %g  vector: %g \n", m, k,   t1-t0, get_time() - t1);
+          
+//           for(int i=0; i < k; i++)
+//           {
+//             fprintf(stderr, "Vector:\t%d (%d,%d)\tAcc: %f %f %f %f \t Jrk; %f %f %f %f \n",
+//                     i,k,m,
+//                     sapdevice->iParticleResults[i         ].x, sapdevice->iParticleResults[i         ].y,
+//                     sapdevice->iParticleResults[i         ].z, sapdevice->iParticleResults[i         ].w,
+//                     sapdevice->iParticleResults[i+k].x, sapdevice->iParticleResults[i+k].y,
+//                     sapdevice->iParticleResults[i+k].z, sapdevice->iParticleResults[i+k].w);
+//           }      
+//           exit(0);
         }
       }    
       
@@ -335,8 +382,7 @@ int sapporo::set_j_particle(int    address,
   
 
   #ifdef CPU_SUPPORT
-    //Put the new j particles directly in the correct location on the 
-    //host side.
+    //Put the new j particles directly in the correct location on the host side.
     deviceList[dev]->pos_j[devAddr] = make_double4(x[0], x[1], x[2], mass);
     
     if(integrationOrder > GRAPE5)
@@ -604,14 +650,15 @@ int sapporo::getGravResults(int nj, int ni,
       
       
 
-//       fprintf(stderr,"%d\t%g\t%g\t%g\t%g\t%g\t%g\t%g\t%d\t%g\n",
-//               index[i], pot[i], acc[i][0], acc[i][1], acc[i][2], jerk[i][0], jerk[i][1], jerk[i][2],
-//               nnbindex[i], ds_min[i]);
+//       fprintf(stderr,"%d\t%g\t%g\t%g\t%g\t%g\t%g\t%g\n",
+//               index[i], pot[i], acc[i][0], acc[i][1], acc[i][2], jerk[i][0], jerk[i][1], jerk[i][2]);
+/*      fprintf(stderr,"%d\t%g\t%g\t%g\t%g\t%g\t%g\t%g\t%d\t%g\n",
+              index[i], pot[i], acc[i][0], acc[i][1], acc[i][2], jerk[i][0], jerk[i][1], jerk[i][2],
+              nnbindex[i], ds_min[i]);   */   
 
     }
   }
   
-
   return 0;
 };
 
@@ -1147,11 +1194,11 @@ void sapporo::predictJParticles_host(int nj)
     
 
     //Velocities
-    vel.x += dt * (acc.x + dt2 * (jrk.x + 
+    vel.x += dt  * (acc.x + dt2  * (jrk.x + 
              dt3 * (snp.x +  dt4 * (crk.x))));
-    vel.y += dt * (acc.y + dt2 * (jrk.y + 
+    vel.y += dt  * (acc.y + dt2  * (jrk.y + 
              dt3 * (snp.y +  dt4 * (crk.y))));
-    vel.z += dt * (acc.z + dt2 * (jrk.z + 
+    vel.z += dt  * (acc.z + dt2  * (jrk.z + 
              dt3 * (snp.z +  dt4 * (crk.z))));
     sapdevice->pVel_j[i] = vel;
 
@@ -1167,9 +1214,31 @@ void sapporo::predictJParticles_host(int nj)
   }//for i  
   
 }
+void sapporo::evaluate_gravity_host_vector(int ni_total, int nj)
+{
+  executedOnHost = true;
+
+  forces_jb(
+    nj,    
+    &sapdevice->pPos_j[0],
+    &sapdevice->pVel_j[0],
+    &sapdevice->id_j  [0],
+    ni_total,
+    &sapdevice->pos_i[0],
+    &sapdevice->vel_i[0],
+    &sapdevice->id_i [0],
+    &sapdevice->iParticleResults[0],
+    &sapdevice->iParticleResults[ni_total],
+    EPS2);
+}
 
 void sapporo::evaluate_gravity_host(int ni_total, int nj)
 {
+  bool print = false;
+  if(ni_total == 103)
+    print = false;
+    
+  
   executedOnHost = true;
   for(int i=0; i < ni_total; i++)
   {
@@ -1211,7 +1280,20 @@ void sapporo::evaluate_gravity_host(int ni_total, int nj)
 
       jrk_i.x += minvr3 * dv.x + drdv * dr.x;  
       jrk_i.y += minvr3 * dv.y + drdv * dr.y;
-      jrk_i.z += minvr3 * dv.z + drdv * dr.z;     
+      jrk_i.z += minvr3 * dv.z + drdv * dr.z;   
+      
+      if(i == 0 && print)
+      {
+        fprintf(stderr, "%d\t%g\t%g\t%g || %g %g || Jpos: %f %f %f vel: %f %f %f iPos: %f %f %f %f %f %f\n",
+                j, jrk_i.x, jrk_i.y, jrk_i.z, ds2, inv_ds, 
+                pos_j.x,pos_j.y,pos_j.z,
+                vel_j.x,vel_j.y,vel_j.z,
+                pos_i.x,pos_i.y,pos_i.z,
+                vel_i.x,vel_i.y,vel_i.z                
+               );
+      }
+      
+      
     }//for j
     
     sapdevice->iParticleResults[i         ] = acc_i;
@@ -1231,6 +1313,18 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
 
   //Use this to indicate we did gravity on the host, to disable memory copies
   executedOnHost = false; 
+  
+//   executedOnHost = true;
+  
+  if(executedOnHost)
+  {
+    fprintf(stderr, "CPU EXEC \n");
+    //Predict host and evaluate
+    predictJParticles_host(nj);
+//     evaluate_gravity_host(ni_total, nj);
+    evaluate_gravity_host_vector(ni_total, nj);
+    return 0.0;
+  }
     
   //ni is the number of i-particles that is set and for which we compute the force
   //nj is the current number of j-particles that are used as sources
@@ -1288,6 +1382,8 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
   {
     //Determine number of particles to be integrated
     ni = min(ni_total - ni_offset, NTHREADS);
+    
+    int real_ni = ni;
     
     
     //Setting the properties for the gravity kernel
@@ -1438,7 +1534,8 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
 
     //Kernel reduce
     nthreads        = (sapdevice->get_NBLOCKS());
-    int nblocks     = ni;
+   // int nblocks     = real_ni;
+     int nblocks     = ni;
 
 
     argIdx = 0;
@@ -1448,6 +1545,7 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
       sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->acc_i_temp.ptr()); 
       sapdevice->reduceForces.set_arg<void*>(argIdx++, sapdevice->iParticleResults.ptr());
       sapdevice->reduceForces.set_arg<int  >(argIdx++, &ni_offset);  //offset  
+      sapdevice->reduceForces.set_arg<int  >(argIdx++, &ni_total);  //Total number to determine offset inside kernel  
       sapdevice->reduceForces.set_arg<int>(argIdx++, NULL, (sharedMemSizeReduce)/sizeof(int));  //Shared memory
     }
     if(integrationOrder > GRAPE5)
