@@ -156,12 +156,17 @@ extern "C" __global__ void dev_evaluate_gravity(
 extern "C" __global__ void dev_reduce_forces(
                                              double4 *acc_i_temp,
                                              double4 *acc_i,
-                                             int      offset_ni_idx)
+                                             int      offset_ni_idx,
+                                             int ni_total)
 {
   extern __shared__ float4 shared_acc[];
   //   __shared__ float4     shared_acc[NBLOCKS];
   
   int index = threadIdx.x * gridDim.x + blockIdx.x;
+
+  //Early out if we are a block for non existent particle
+  if((blockIdx.x + offset_ni_idx) >= ni_total)
+    return;
 
   //Convert the data to floats
   shared_acc[threadIdx.x] = (float4){acc_i_temp[index].x, acc_i_temp[index].y, acc_i_temp[index].z, acc_i_temp[index].w};

@@ -497,9 +497,11 @@ dev_evaluate_gravity_allinone(
 
 #pragma unroll 32
     for (int k = 0; k < j1; k++) 
+    {
       body_body_interaction(ds2_min2, n_ngb, local_ngb_list,
           acc, jrk, pos, vel,
           shared_pos[offy+k], shared_vel[offy+k], EPS2,iID);
+    }
 
     for (int k = j1; k < j; k++) 
       body_body_interaction(ds2_min2, n_ngb, local_ngb_list,
@@ -613,6 +615,9 @@ extern "C" __global__ void dev_reduce_forces(
 
   int index = threadIdx.x * gridDim.x + blockIdx.x;
 
+  //Early out if we are a block for non existent particle
+  if((blockIdx.x + offset_ni_idx) >= ni_total)
+    return;
 
   //Convert the data to floats
   shared_acc[threadIdx.x] = (float4){acc_i_temp[index].x, acc_i_temp[index].y, acc_i_temp[index].z, acc_i_temp[index].w};

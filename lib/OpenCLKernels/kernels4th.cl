@@ -470,6 +470,9 @@ __kernel void dev_reduce_forces(
   
   int index = threadIdx_x * gridDim_x + blockIdx_x;
 
+  //Early out if we are a block for non existent particle
+  if((blockIdx_x + offset_ni_idx) >= ni_total)
+    return;
 
   //Convert the data to floats
   shared_acc[threadIdx_x] = (float4){acc_i_temp[index].x, acc_i_temp[index].y, acc_i_temp[index].z, acc_i_temp[index].w};

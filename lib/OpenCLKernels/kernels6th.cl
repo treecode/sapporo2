@@ -450,6 +450,10 @@ __kernel void dev_reduce_forces(
 
   int index = threadIdx_x * gridDim_x + blockIdx_x;
 
+  //Early out if we are a block for non existent particle
+  if((blockIdx_x + offset_ni_idx) >= ni_total)
+    return;
+
 //   shared_acc[threadIdx.x] = acc_i[index];
 //   shared_jrk[threadIdx.x] = jrk_i[index];
 //   shared_ds [threadIdx.x] = vel_i[offset_ds + index].w;

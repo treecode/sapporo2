@@ -370,6 +370,10 @@ extern "C" __global__ void dev_reduce_forces(
 
   int index = threadIdx.x * gridDim.x + blockIdx.x;
 
+  //Early out if we are a block for non existent particle
+  if((blockIdx.x + offset_ni_idx) >= ni_total)
+    return;
+
   //Convert the data to floats
   shared_acc[threadIdx.x] = acc_i_temp[index];
   shared_jrk[threadIdx.x] = jrk_i_temp[index];

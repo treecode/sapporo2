@@ -13,9 +13,9 @@ CUDA_TK  = /usr/local/cuda
 
 #OFLAGS = -g -Wall -fopenmp  DEFAULT
 
-OFLAGS = -g -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
+OFLAGS = -g -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
 
-CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include 
+CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include -msse4
 
 #Below line is used when compiling for testing
 #CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include -D NTHREADS=${curNTHREADS} -D NPIPES=${curNPIPES} -D NBLOCKS_PER_MULTI=${curNMULTI} 
@@ -25,7 +25,7 @@ CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include
 NVCC      = $(CUDA_TK)/bin/nvcc  
 
 
-NVCCFLAGS = -arch sm_20
+NVCCFLAGS = -arch sm_20 
 #NVCCFLAGS = -arch sm_30 -D NTHREADS=${curNTHREADS} -D NPIPES=${curNPIPES} -D NBLOCKS_PER_MULTI=${curNMULTI}
 
 # Use with Mac OS X
