@@ -30,15 +30,18 @@ typedef vreal REAL;
 #define LDU(x) (REAL::uload(x))
 #define REF(x) (REAL::aref(x))
 
+typedef int    _v4si  __attribute__((vector_size(16)));
 
 struct Force
 {
   vreal acc[3];
   vreal jrk[3];
   vreal pot;
+  vreal min_ds;
+  _v4si nn_id;
 };
 
-typedef int    _v4si  __attribute__((vector_size(16)));
+
 
 struct Predictor
 {
@@ -73,23 +76,44 @@ void body_body_force(
     const Predictor &pj, 
     const vreal eps2)
 {
-  
+
   const vreal dr[3] = {
     pj.pos[0] - pi.pos[0],
     pj.pos[1] - pi.pos[1],
     pj.pos[2] - pi.pos[2] };
-  const vreal ds2 = dot(dr,dr) + eps2;
-  vreal  inv_ds  = RSQRT(ds2);
+
+   
+  const vreal ds2 = dot(dr,dr);
+  vreal  inv_ds  = RSQRT(ds2 + eps2);
+
+#if 0 //Disable to remove ID check and nearest neighbour
   
-    
   // check i-particleID against j-particleIds to build a mask  
   //Built a mask that has 0xFF.. when id's are not equal, and 0 when id's are equal
   //this should change inv_ds from a NaN to a 0 incase we take rsqrt of 0
   //VERY slow (factor 2 slow down :( )
-  const SIMD::vector<float> mask =  __builtin_ia32_cmpneqps((REAL::_v4sf)pi.id, (REAL::_v4sf)pj.id);
+  //ID-check Part 1
+  const SIMD::vector<float> mask =  __builtin_ia32_cmpneqps((REAL::_v4sf)pi.id, (REAL::_v4sf)pj.id);    
+  
+  //ID-check part 2
   inv_ds                         = inv_ds & mask;
   
-  
+  //Min distance check
+  vreal distCheck = ds2       < f.min_ds; //Check distance
+  distCheck       = distCheck & mask;     //Mask out self-interaction ID, otherwise we are our own nearest neighbour
+
+  //Blend the results using the distance check mask
+  f.min_ds =  __builtin_ia32_blendvpd(f.min_ds,ds2, distCheck); //Merge the results for distance
+
+  //Nearest neighbour ID, blend using the distance check mask
+  REAL::_v4sf temp3 = __builtin_ia32_blendvps(
+                           (REAL::_v4sf)f.nn_id,
+                           (REAL::_v4sf)pj.id,
+                           (REAL::_v4sf) distCheck.val); //Merge the results for id
+f.nn_id = (_v4si)temp3;
+#endif
+      
+  //Force
   const vreal  inv_ds2 = inv_ds  * inv_ds;
   const vreal minv_ds  = inv_ds  * pj.mass;
   const vreal minv_ds3 = inv_ds2 * minv_ds;
@@ -139,6 +163,8 @@ void compute_forces_jb(
     real jrky[],
     real jrkz[],
     real gpot[],
+    int  nnb [],
+    real ds_min[],
     const real seps2)
 {
   const vreal eps2(seps2);
@@ -175,6 +201,8 @@ void compute_forces_jb(
     fi.jrk[1] = 0.0;
     fi.jrk[2] = 0.0;
     fi.pot    = 0.0;
+    fi.min_ds = 10e10;
+    fi.nn_id  = (_v4si)_mm_set1_epi32(-1);
 
     for (int j = 0; j < nj; j++)
     {
@@ -186,7 +214,7 @@ void compute_forces_jb(
       pj.vel[0] = velxj[j];
       pj.vel[1] = velyj[j];
       pj.vel[2] = velzj[j];
-      
+     
       //Set all j-items to the same ID
       pj.id  =  (_v4si)_mm_set1_epi32(idj[j]);
       
@@ -237,6 +265,26 @@ void compute_forces_jb(
     REF(jrky[i]) = fi.jrk[1];
     REF(jrkz[i]) = fi.jrk[2];
     REF(gpot[i]) = fi.pot;
+    
+    //Extract nearest neighbour and distance
+    for (int k = 0; k < vreal::WIDTH; k++)
+    {
+      switch(k)
+      {
+        case 0:
+          nnb[i+k]    = __builtin_ia32_vec_ext_v4si(fi.nn_id, 0); //note 2* since we use doubles
+          break;
+        case 1:
+          nnb[i+k]    = __builtin_ia32_vec_ext_v4si(fi.nn_id, 2); //note 2* since we use doubles
+          break;
+      }
+/*      
+      fprintf(stderr, "For id %d \t nearest is:  %d going to read: %d \n",
+             idi[i+k],  nnb[i+k], k);*/
+            
+      ds_min[i+k] = fi.min_ds[k];
+    }
+    
   }//for i
 }//compute_forces
 
@@ -269,6 +317,7 @@ void forces_jb(
     const int     id_i[],
     double4 acc[],
     double4 jrk[],
+    double  ds_i[],
     const real eps2)   
 {
   
@@ -301,6 +350,9 @@ void forces_jb(
   static std::vector<real> jrkz(max_ni);
   static std::vector<real> gpot(max_ni);  
   
+  static std::vector<int>  nnb(max_ni);
+  static std::vector<double>  ds_min(max_ni);
+  
   
   //Walk in blocks over the i-particles
   for(int z=0; z < ni; z += max_ni)    
@@ -324,6 +376,9 @@ void forces_jb(
       acc[z+i].y = 0; acc[z+i].z = 0;
       jrk[z+i].x = 0; jrk[z+i].y = 0;
       jrk[z+i].z = 0;
+      
+      ds_i[z+i] = 10e10;
+      
     } //for i
       
     //walk in blocks over the j-particles  
@@ -374,6 +429,8 @@ void forces_jb(
           &jrky[0],
           &jrkz[0],
           &gpot[0],
+          &nnb [0],
+          &ds_min[0],
           eps2);      
 
       for (int i = 0; i < cur_ni; i++)
@@ -386,6 +443,14 @@ void forces_jb(
         jrk[z+i].x += jrkx[i];
         jrk[z+i].y += jrky[i];
         jrk[z+i].z += jrkz[i];
+        
+        //Determine the nearest neighbour
+        if(ds_min[i] < ds_i[z+i])
+        {
+          jrk[z+i].w =  (int)nnb[i];
+          ds_i[z+i]  = ds_min[i];
+        }
+        
       }//for i
     }//for y
   }//for z

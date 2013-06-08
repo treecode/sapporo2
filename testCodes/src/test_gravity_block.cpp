@@ -34,7 +34,7 @@ int main(int argc, char *argv[]) {
   int    *nngb  = new int[n];
   int    *ngb_list = new int[n];
   int    *id   = new int[n];
-  
+  double *ds_min = new double[n]; 
 
   double tm = 0;
   for (int i = 0; i < n; i++) {
@@ -132,13 +132,14 @@ int main(int argc, char *argv[]) {
     grav.getGravResults(n, npart,
 			id+i, pos+i, vel+i,
 			eps2, h2,
-			acc+i, jrk+i,NULL, NULL, pot+i, nnb+i, NULL, true);
+			//acc+i, jrk+i,NULL, NULL, pot+i, nnb+i, NULL, true);
+			acc+i, jrk+i,NULL, NULL, pot+i, nnb+i, ds_min+i, true);
                         
      for(int j=i; j < i+npart; j++){
-     printf("calchalf2: %d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\n", j,
+     printf("calchalf2: %d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\t%f\n", j,
             acc[j][0], acc[j][1], acc[j][2],
             pot[j], jrk[j][0],
-            jrk[j][1], jrk[j][2], nnb[j]);
+            jrk[j][1], jrk[j][2], nnb[j], ds_min[j]);
      }
 // 
 //  exit(0);

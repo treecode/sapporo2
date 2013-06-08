@@ -80,6 +80,7 @@ int sapporo::open(std::string kernelFile, int *devices,
 
   int numDev = 0;
   
+  
   #ifdef __OPENCL_DEV__
     numDev = contextTest.getDeviceCount(CL_DEVICE_TYPE_GPU, 0);
   #else
@@ -141,18 +142,24 @@ int sapporo::open(std::string kernelFile, int *devices,
   jCopyInformation.resize(nCUDAdevices);
   
   
+  CPUThreshold = -1; //By Default GPU is always used
+  
   
 #if 0
   #ifdef CPU_SUPPORT
+  
+    const int nMaxTest = 2049;
+    const int nMaxLoop = 2049;
+    const int nIncrease = 16;
     //At the start of the program figure out at which point the GPU will be faster
     //than the host CPU. This can either be based on ni, nj, or on a combination 
     //of ni*nj = #interactions. Then if #interactions < GPUOptimal do host compute
-    //otherwise do GPU compute
+    //otherwise do GPU compute. Stored in CPUThreshold
   
     //#pragma omp parallel
     {
       //First fill the ids with valid info otherwise testing might fail, if all ids are 0
-      for(int i=0; i < 1024; i++) 
+      for(int i=0; i < nMaxTest; i++) 
       {
         if(i < NPIPES)
         {
@@ -178,59 +185,156 @@ int sapporo::open(std::string kernelFile, int *devices,
           sapdevice->pVel_j[i].z =  drand48() * 0.1;          
         }
       }
-
+      
+      
+      //Some temp buffers, are being used multiple
+      //times and contain only bogus data      
+      double (*pos)[3]  = new double[nMaxTest][3];
+      double (*vel)[3]  = new double[nMaxTest][3];
+      double (*acc)[3]  = new double[nMaxTest][3];
+      double (*jrk)[3]  = new double[nMaxTest][3];
+      double  *tempBuff = new double[nMaxTest];
+      
+      double *timingMatrixGPU = new double[nMaxTest*nMaxTest];
+      double *timingMatrixCPU = new double[nMaxTest*nMaxTest];
+      
+      //First call to initialize device
+      evaluate_gravity(1, 1);            
+      retrieve_i_particle_results(1);
+      
+      double tTime = 0;
+      CPUThreshold = -1; //Negative to force GPU timings
+      for(int k=1; k < nMaxLoop; k+=nIncrease) //number of i-particles
+      {
+        for(int m=1; m < nMaxLoop; m+=nIncrease) //number of j-particles
+        {
+          timingMatrixGPU[m*nMaxTest+k] = 0;
+          for(int n=0; n < 10; n++)
+          {
+            double t0 = get_time();
+            set_time(tTime);//set time
+            startGravCalc(m,k,
+                          &sapdevice->id_i[0], pos,
+                          vel,acc, acc,tempBuff,
+                          1./ nMaxTest, tempBuff, NULL);
+            getGravResults(m,k,
+                          &sapdevice->id_i[0], pos,
+                          vel, 1./ nMaxTest, NULL,
+                          acc, jrk, acc, jrk, tempBuff,
+                          NULL, tempBuff, false);
+//             fprintf(stderr, "TEST DEV: Took: nj: %d  ni: %d \t %g\n", m, k,   get_time() - t0);
+            
+            timingMatrixGPU[m*nMaxTest+k] += get_time() - t0;
+            tTime += 0.0001;
+          }//for n
+        }//for m
+      }//for k
+      
+#if 0
+      CPUThreshold = 10e10; //Huge to force CPU timings
+      //First call outside loop, to boot-up openMP
+      evaluate_gravity_host(1, 1);  
+      evaluate_gravity_host_vector(1, 1);  
+      
+      tTime = 0;
+      for(int k=1; k < nMaxLoop; k+=nIncrease)
+      {
+        for(int m=1; m < nMaxLoop; m+=nIncrease)
+        {
+          timingMatrixCPU[m*nMaxTest+k] = 0;
+          for(int n=0; n < 10; n++)
+          {          
+            double t0 = get_time();
+            set_time(tTime);//set time
+            startGravCalc(m,k,
+                          &sapdevice->id_i[0], pos,
+                          vel,acc, acc,tempBuff,
+                          1./ nMaxTest, tempBuff, NULL);
+            getGravResults(m,k,
+                          &sapdevice->id_i[0], pos,
+                          vel, 1./ nMaxTest, NULL,
+                          acc, jrk, acc, jrk, tempBuff,
+                          NULL, tempBuff, false);
+//             fprintf(stderr, "TEST CPU: Took: nj: %d  ni: %d \t %g\n", m, k,   get_time() - t0);
+            timingMatrixCPU[m*nMaxTest+k] += get_time() - t0;
+            tTime += 0.0001;  
+          }//for n
+        }//for m
+      } //for k
+    #endif  
     
-      for(int k=1; k < 1024; k+=128)
+    //Write timing data to file
+    FILE *foutT = fopen("data.txt","w");
+      //Print timing results GPU
+      fprintf(stderr, "GPU timings:\nni");
+      fprintf(foutT, "ni");
+      for(int i=1; i < nMaxLoop; i+=nIncrease)
+        fprintf(foutT, "\t%d", i);      
+      fprintf(foutT, "\n");
+      fprintf(foutT, "nj\n");
+      
+      for(int j=1; j < nMaxLoop; j+=nIncrease)
       {
-        for(int m=1; m < 1024; m+=128)
+        fprintf(foutT, "%d\t", j);
+        for(int i=1; i < nMaxLoop; i+=nIncrease)
         {
-          double t0 = get_time();
-          evaluate_gravity(k, m);  
-          sapdevice->reduceForces.wait();
-  //         retrieve_i_particle_results(ni);
-          fprintf(stderr, "TEST DEV: Took: nj: %d  ni: %d \t %g\n", m, k,   get_time() - t0);
+          fprintf(foutT, "%f\t", timingMatrixGPU[j*nMaxTest+i]);
         }
+        fprintf(foutT, "\n");
       }
-      for(int k=1; k < 1024; k+=128)
+      fclose(foutT);
+      exit(0);
+      fprintf(stderr, "\nCPU timings:\nni");
+      for(int i=1; i < nMaxLoop; i+=nIncrease)
+        fprintf(stderr, "\t%d", i);      
+      fprintf(stderr, "\n");
+      fprintf(stderr, "nj\n");
+      
+      for(int j=1; j < nMaxLoop; j+=nIncrease)
       {
-        for(int m=1; m < 1024; m+=128)
+        fprintf(stderr, "%d\t", j);
+        for(int i=1; i < nMaxLoop; i+=nIncrease)
         {
-          double t0 = get_time();
-          evaluate_gravity_host(k, m);  
-          
-//           for(int i=0; i < k; i++)
-//           {
-//             fprintf(stderr, "Serial:\t%d (%d,%d)\tAcc: %f %f %f %f \t Jrk; %f %f %f %f \n",
-//                     i,k,m,
-//                     sapdevice->iParticleResults[i         ].x, sapdevice->iParticleResults[i         ].y,
-//                     sapdevice->iParticleResults[i         ].z, sapdevice->iParticleResults[i         ].w,
-//                     sapdevice->iParticleResults[i+k].x, sapdevice->iParticleResults[i+k].y,
-//                     sapdevice->iParticleResults[i+k].z, sapdevice->iParticleResults[i+k].w);
-//           }
-          
-          double t1 = get_time();
-          evaluate_gravity_host_vector(k, m);  
-          fprintf(stderr, "TEST CPU: Took: nj: %d  ni: %d \t serial: %g  vector: %g \n", m, k,   t1-t0, get_time() - t1);
-          
-//           for(int i=0; i < k; i++)
-//           {
-//             fprintf(stderr, "Vector:\t%d (%d,%d)\tAcc: %f %f %f %f \t Jrk; %f %f %f %f \n",
-//                     i,k,m,
-//                     sapdevice->iParticleResults[i         ].x, sapdevice->iParticleResults[i         ].y,
-//                     sapdevice->iParticleResults[i         ].z, sapdevice->iParticleResults[i         ].w,
-//                     sapdevice->iParticleResults[i+k].x, sapdevice->iParticleResults[i+k].y,
-//                     sapdevice->iParticleResults[i+k].z, sapdevice->iParticleResults[i+k].w);
-//           }      
-//           exit(0);
+          fprintf(stderr, "%f\t", timingMatrixCPU[j*nMaxTest+i]);
         }
-      }    
+        fprintf(stderr, "\n");
+      }      
+      
+      
+      fprintf(stderr, "GPU timings:\n");
+           
+      for(int j=1; j < nMaxLoop; j+=nIncrease)
+      {        
+        for(int i=1; i < nMaxLoop; i+=nIncrease)
+        {
+//           fprintf(stderr,"%f\t%f\t%f\t%f\n",
+            fprintf(stderr,"%d\t%f\t%f\n", 
+                  i*j,  timingMatrixGPU[j*nMaxTest+i],
+                   timingMatrixCPU[j*nMaxTest+i]);
+                  
+//                   j / timingMatrixGPU[j*nMaxTest+i],
+//                   i / timingMatrixGPU[j*nMaxTest+i],
+//                   j / timingMatrixCPU[j*nMaxTest+i],
+//                   i / timingMatrixCPU[j*nMaxTest+i]);          
+        }//for i        
+        fprintf(stderr, "\n");
+      } //for j
+      
       
       //TODO set some interaction count number that is the break-even point 
       //between CPU and GPU computations
-      
+      delete[] pos;
+      delete[] vel;
+      delete[] acc;
+      delete[] jrk;
+      delete[] tempBuff;
+      delete[] timingMatrixGPU;
+      delete[] timingMatrixCPU;      
     }
+    
+    
     exit(0);
-  #endif
+  #endif //ifdef CPU support
 #endif
 
   return 0;
@@ -459,6 +563,8 @@ void sapporo::startGravCalc(int    nj,          int ni,
     cerr << "calc_firsthalf ni: " << ni << "\tnj: " << nj << "integrationOrder: "<< integrationOrder << endl;
   #endif
     
+  if(ni == 0 || nj == 0)  return;
+
   //Prevent unused compiler warning
   j6old  = j6old;
   phiold = phiold;
@@ -578,6 +684,7 @@ int sapporo::getGravResults(int nj, int ni,
     fprintf(stderr, "calc_lasthalf2 device= %d, ni= %d nj = %d \n", -1, ni, nj);
   #endif
     
+  if(ni == 0 || nj == 0)  return 0;
   //Prevent unused compiler warning    
   nj = nj; index = index; xi = xi; vi = vi; eps2 = eps2; h2 = h2;
   
@@ -1229,17 +1336,14 @@ void sapporo::evaluate_gravity_host_vector(int ni_total, int nj)
     &sapdevice->id_i [0],
     &sapdevice->iParticleResults[0],
     &sapdevice->iParticleResults[ni_total],
+    &sapdevice->ds_i[0],
     EPS2);
 }
 
 void sapporo::evaluate_gravity_host(int ni_total, int nj)
 {
-  bool print = false;
-  if(ni_total == 103)
-    print = false;
-    
-  
   executedOnHost = true;
+  #pragma omp for
   for(int i=0; i < ni_total; i++)
   {
     double4 pos_i = sapdevice->pos_i[i];
@@ -1247,6 +1351,9 @@ void sapporo::evaluate_gravity_host(int ni_total, int nj)
     int      id_i = sapdevice->id_i[i];
     double4 acc_i = make_double4(0,0,0,0);
     double4 jrk_i = make_double4(0,0,0,0);    
+    
+    double ds_min = 10e10;
+    int    nnb    = -1;
     
     for(int j=0; j < nj; j++)
     {
@@ -1260,6 +1367,13 @@ void sapporo::evaluate_gravity_host(int ni_total, int nj)
       //Compute the force
       const double4 dr = make_double4(pos_j.x - pos_i.x, pos_j.y - pos_i.y, pos_j.z - pos_i.z, 0);
       const double ds2 = ((dr.x*dr.x + (dr.y*dr.y)) + dr.z*dr.z);
+      
+      if(ds2 < ds_min) //keep track of nearest neighbour
+      {
+        ds_min = ds2;
+        nnb    = id_j;
+      }
+      
       
       const double inv_ds = 1.0/sqrt(ds2+EPS2);
 
@@ -1281,26 +1395,16 @@ void sapporo::evaluate_gravity_host(int ni_total, int nj)
       jrk_i.x += minvr3 * dv.x + drdv * dr.x;  
       jrk_i.y += minvr3 * dv.y + drdv * dr.y;
       jrk_i.z += minvr3 * dv.z + drdv * dr.z;   
-      
-      if(i == 0 && print)
-      {
-        fprintf(stderr, "%d\t%g\t%g\t%g || %g %g || Jpos: %f %f %f vel: %f %f %f iPos: %f %f %f %f %f %f\n",
-                j, jrk_i.x, jrk_i.y, jrk_i.z, ds2, inv_ds, 
-                pos_j.x,pos_j.y,pos_j.z,
-                vel_j.x,vel_j.y,vel_j.z,
-                pos_i.x,pos_i.y,pos_i.z,
-                vel_i.x,vel_i.y,vel_i.z                
-               );
-      }
-      
-      
     }//for j
+    
+    
+    jrk_i.w            =   (int)nnb;
+    sapdevice->ds_i[i] = ds_min;
     
     sapdevice->iParticleResults[i         ] = acc_i;
     sapdevice->iParticleResults[i+ni_total] = jrk_i;
     
   }//for i
-  
 }
 
 
@@ -1311,20 +1415,27 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
     cerr << "evaluate_gravity ni: " << ni_total << "\tnj: " << nj << endl;
   #endif
 
+  if(ni_total == 0 || nj == 0)  return 0.0;
+
+
   //Use this to indicate we did gravity on the host, to disable memory copies
   executedOnHost = false; 
   
-//   executedOnHost = true;
-  
-  if(executedOnHost)
-  {
-    fprintf(stderr, "CPU EXEC \n");
-    //Predict host and evaluate
-    predictJParticles_host(nj);
-//     evaluate_gravity_host(ni_total, nj);
-    evaluate_gravity_host_vector(ni_total, nj);
-    return 0.0;
-  }
+  #ifdef CPU_SUPPORT
+    //Compute number of interactions to be done and compare to CPU threshold
+    int nInter = ni_total*nj;    
+    if (nInter < CPUThreshold)
+    {
+//         fprintf(stderr, "CPU EXEC || ni: %d  nj: %d  \n", ni_total, nj);
+        //Predict host and evaluate
+        predictJParticles_host(nj);
+    //     evaluate_gravity_host(ni_total, nj);         //Non-vector version
+        evaluate_gravity_host_vector(ni_total, nj);     //Vector version
+        executedOnHost = true;
+        return 0.0;
+    }
+    
+  #endif
     
   //ni is the number of i-particles that is set and for which we compute the force
   //nj is the current number of j-particles that are used as sources
@@ -1382,9 +1493,6 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
   {
     //Determine number of particles to be integrated
     ni = min(ni_total - ni_offset, NTHREADS);
-    
-    int real_ni = ni;
-    
     
     //Setting the properties for the gravity kernel
 

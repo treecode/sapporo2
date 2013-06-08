@@ -25,7 +25,7 @@
 //optimizations. But this can be device/resource dependent and 
 //should only be used if you know that it will work 
 //(test if needed to find out if it works)
-#define ENABLE_THREAD_BLOCK_SIZE_OPTIMIZATION
+// #define ENABLE_THREAD_BLOCK_SIZE_OPTIMIZATION
 
 
 

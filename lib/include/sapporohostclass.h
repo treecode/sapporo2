@@ -128,6 +128,7 @@ protected:
   int integrationPrecision;     //The precision of the integrator for shared-memory calculation. Default is DEFAULT
   
   bool executedOnHost;
+  int CPUThreshold;             //The number of interactions from which point on GPU will be faster than CPU
   
 
 public:
