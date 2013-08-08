@@ -138,6 +138,13 @@ int main(int argc, char *argv[]) {
                           id+i, pos+i, vel+i,
                           eps2, h2,
                           acc+i, jrk+i,NULL, NULL, pot+i, nnb+i, NULL, true);
+      
+    for(int i=0; i < 10; i++)
+    {
+      fprintf(stderr,"NORMAL: %d \t %f %f %f %f \n", 
+              i,
+              acc[i][0],acc[i][1],acc[i][2],pot[i]);
+    }
 
 
     }
@@ -166,7 +173,7 @@ int main(int argc, char *argv[]) {
                           pos+i, vel+i,
                           acc+i, jrk+i, pot+i, eps2, h2, NULL);
 
-#if 1
+#if 0
       grav.getGravResults(n, npart,
                           id+i, pos+i, vel+i,
                           eps2, h2,

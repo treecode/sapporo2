@@ -317,7 +317,7 @@ void forces_jb(
     const int     id_i[],
     double4 acc[],
     double4 jrk[],
-    double  ds_i[],
+    float2  ds_i[],
     const real eps2)   
 {
   
@@ -377,7 +377,7 @@ void forces_jb(
       jrk[z+i].x = 0; jrk[z+i].y = 0;
       jrk[z+i].z = 0;
       
-      ds_i[z+i] = 10e10;
+      ds_i[z+i].y = 10e10;
       
     } //for i
       
@@ -445,10 +445,10 @@ void forces_jb(
         jrk[z+i].z += jrkz[i];
         
         //Determine the nearest neighbour
-        if(ds_min[i] < ds_i[z+i])
+        if(ds_min[i] < ds_i[z+i].y)
         {
-          jrk[z+i].w =  (int)nnb[i];
-          ds_i[z+i]  = ds_min[i];
+          ds_i[z+i].x  =    nnb[i];
+          ds_i[z+i].y  = ds_min[i];
         }
         
       }//for i

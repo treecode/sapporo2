@@ -16,6 +16,12 @@ vel_j.w = eps2
 
 */
 
+inline int host_float_as_int(float val)
+{
+  union{float f; int i;} u; //__float_as_int
+  u.f           = val;
+  return u.i;
+}
 
 inline int n_norm(int n, int j) {
   n = ((n-1)/j) * j + j;
@@ -562,7 +568,7 @@ void sapporo::startGravCalc(int    nj,          int ni,
   #ifdef DEBUG_PRINT
     cerr << "calc_firsthalf ni: " << ni << "\tnj: " << nj << "integrationOrder: "<< integrationOrder << endl;
   #endif
-    
+
   if(ni == 0 || nj == 0)  return;
 
   //Prevent unused compiler warning
@@ -729,12 +735,13 @@ int sapporo::getGravResults(int nj, int ni,
         jerk[i][1] += deviceList[dev]->iParticleResults[ni+i].y;
         jerk[i][2] += deviceList[dev]->iParticleResults[ni+i].z;
 
-        double  ds  = deviceList[dev]->ds_i[i];        
+        double  ds  = deviceList[dev]->ds_i[i].y;        
 
         if(ngb)   //If we want nearest neighbour
         {
           if (ds < ds_min[i]) {
-            int nnb     = (int)(deviceList[dev]->iParticleResults[ni+i].w);
+            //int nnb     = (int)(deviceList[dev]->iParticleResults[ni+i].w);
+            int nnb =  host_float_as_int(deviceList[dev]->ds_i[i].x);
             nnbindex[i] = nnb;
             ds_min[i]   = ds;
             if(dsmin_i != NULL)
@@ -1185,34 +1192,27 @@ void sapporo::copyJInDev(int nj)
 
     int argIdx = 0;
     sapdevice->copyJParticles.set_arg<int  >(argIdx++, &njToCopy);
+    sapdevice->copyJParticles.set_arg<int  >(argIdx++, &integrationOrder);
     sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->pos_j.ptr());
     sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->pos_j_temp.ptr());
     sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->address_j.ptr());
-
-    if(integrationOrder > GRAPE5)
-    {
-      sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->t_j.ptr());
-      sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->pPos_j.ptr());
-      sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->pVel_j.ptr());
-      sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->vel_j.ptr());
-      sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->acc_j.ptr());
-      sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->jrk_j.ptr());
-      sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->id_j.ptr());
-      sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->t_j_temp.ptr());
-      sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->vel_j_temp.ptr());
-      sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->acc_j_temp.ptr());
-      sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->jrk_j_temp.ptr());
-      sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->id_j_temp.ptr());
-
-      if(integrationOrder > FOURTH)
-      {
-        sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->pAcc_j.ptr());
-        sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->snp_j.ptr());
-        sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->crk_j.ptr());
-        sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->snp_j_temp.ptr());
-        sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->crk_j_temp.ptr());
-      }
-    }
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->t_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->pPos_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->pVel_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->vel_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->acc_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->jrk_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->id_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->t_j_temp.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->vel_j_temp.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->acc_j_temp.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->jrk_j_temp.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->id_j_temp.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->pAcc_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->snp_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->crk_j.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->snp_j_temp.ptr());
+    sapdevice->copyJParticles.set_arg<void*>(argIdx++, sapdevice->crk_j_temp.ptr());
 
     //Set execution configuration and start the kernel
     sapdevice->copyJParticles.setWork_2D(128, njToCopy);
@@ -1223,6 +1223,9 @@ void sapporo::copyJInDev(int nj)
 void sapporo::predictJParticles(int nj)
 {
   //This function is called inside an omp parallel section
+  #ifdef DEBUG_PRINT
+    cerr << "predictJParticles nj: " << nj << endl;
+  #endif  
 
   if(integrationOrder == GRAPE5)
     return; //GRAPE 5 has no prediction
@@ -1231,23 +1234,21 @@ void sapporo::predictJParticles(int nj)
   //already had a gravity evaluation call before that called the predict kernel
   if(predict)
   {
+    int argIdx = 0;
     //Set arguments
-    sapdevice->predictKernel.set_arg<int   >(0, &nj);
-    sapdevice->predictKernel.set_arg<double>(1, &t_i);
-    sapdevice->predictKernel.set_arg<void* >(2, sapdevice->t_j.ptr());
-    sapdevice->predictKernel.set_arg<void* >(3, sapdevice->pPos_j.ptr());
-    sapdevice->predictKernel.set_arg<void* >(4, sapdevice->pVel_j.ptr());
-    sapdevice->predictKernel.set_arg<void* >(5, sapdevice->pos_j.ptr());
-    sapdevice->predictKernel.set_arg<void* >(6, sapdevice->vel_j.ptr());
-    sapdevice->predictKernel.set_arg<void* >(7, sapdevice->acc_j.ptr());
-    sapdevice->predictKernel.set_arg<void* >(8, sapdevice->jrk_j.ptr());
-
-    if(integrationOrder > FOURTH)
-    {
-      sapdevice->predictKernel.set_arg<void* >(9, sapdevice->pAcc_j.ptr());
-      sapdevice->predictKernel.set_arg<void* >(10, sapdevice->snp_j.ptr());
-      sapdevice->predictKernel.set_arg<void* >(11, sapdevice->crk_j.ptr());
-    }
+    sapdevice->predictKernel.set_arg<int   >(argIdx++, &nj);
+    sapdevice->predictKernel.set_arg<double>(argIdx++, &t_i);
+    sapdevice->predictKernel.set_arg<int   >(argIdx++, &integrationOrder);
+    sapdevice->predictKernel.set_arg<void* >(argIdx++, sapdevice->t_j.ptr());
+    sapdevice->predictKernel.set_arg<void* >(argIdx++, sapdevice->pPos_j.ptr());
+    sapdevice->predictKernel.set_arg<void* >(argIdx++, sapdevice->pos_j.ptr());
+    sapdevice->predictKernel.set_arg<void* >(argIdx++, sapdevice->pVel_j.ptr());    
+    sapdevice->predictKernel.set_arg<void* >(argIdx++, sapdevice->vel_j.ptr());
+    sapdevice->predictKernel.set_arg<void* >(argIdx++, sapdevice->acc_j.ptr());
+    sapdevice->predictKernel.set_arg<void* >(argIdx++, sapdevice->jrk_j.ptr());
+    sapdevice->predictKernel.set_arg<void* >(argIdx++, sapdevice->pAcc_j.ptr());
+    sapdevice->predictKernel.set_arg<void* >(argIdx++, sapdevice->snp_j.ptr());
+    sapdevice->predictKernel.set_arg<void* >(argIdx++, sapdevice->crk_j.ptr());
 
     //Set execution config and execute
     sapdevice->predictKernel.setWork_2D(128, nj);
@@ -1398,14 +1399,15 @@ void sapporo::evaluate_gravity_host(int ni_total, int nj)
     }//for j
     
     
-    jrk_i.w            =   (int)nnb;
-    sapdevice->ds_i[i] = ds_min;
+    sapdevice->ds_i[i].x =    nnb;
+    sapdevice->ds_i[i].y = ds_min;
     
     sapdevice->iParticleResults[i         ] = acc_i;
     sapdevice->iParticleResults[i+ni_total] = jrk_i;
     
   }//for i
 }
+
 
 
 double sapporo::evaluate_gravity(int ni_total, int nj)
@@ -1423,18 +1425,17 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
   
   #ifdef CPU_SUPPORT
     //Compute number of interactions to be done and compare to CPU threshold
-    int nInter = ni_total*nj;    
+    long long int nInter = ni_total* (long long int) nj;    
     if (nInter < CPUThreshold)
     {
-//         fprintf(stderr, "CPU EXEC || ni: %d  nj: %d  \n", ni_total, nj);
-        //Predict host and evaluate
-        predictJParticles_host(nj);
-    //     evaluate_gravity_host(ni_total, nj);         //Non-vector version
-        evaluate_gravity_host_vector(ni_total, nj);     //Vector version
+        fprintf(stderr, "CPU EXEC || ni: %d  nj: %d BThreshold: %d nInter: %lld\n", ni_total, nj, CPUThreshold, nInter);
+        
+        predictJParticles_host(nj);                    //Predict the particles
+        //evaluate_gravity_host(ni_total, nj);         //Non-vector version
+        evaluate_gravity_host_vector(ni_total, nj);    //Vector version
         executedOnHost = true;
         return 0.0;
-    }
-    
+    }    
   #endif
     
   //ni is the number of i-particles that is set and for which we compute the force
@@ -1449,44 +1450,100 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
   
   
     
-#if 0
+#if 1
   {
-    int sharedMemSizeEval    = 2*NTHREADS*(sizeof(DS4) + sizeof(float4)); //4th order Double Single
-    int argIdx = 0;
-    
-    int ni_offset = 0;
-    
-    sapdevice->evalgravKernelCombined.set_arg<int  >(argIdx++, &nj);      //Total number of j particles
-    sapdevice->evalgravKernelCombined.set_arg<int  >(argIdx++, &ni_offset);    
-    sapdevice->evalgravKernelCombined.set_arg<int  >(argIdx++, &ni_total);   
+//     int multipleSize = 1;
+//     int ni =  NTHREADS;
+//     //Force ni to be a multiple of the warp/wavefront size. Note we can let ni be a multiple
+//     //since we ignore all results of non-used (non-requested) particles
+//     int temp = ni / multipleSize; 
+//     if((ni % multipleSize) != 0 ) temp++;
+//     ni = temp * multipleSize;
+//     
+//     //Dimensions of one thread-block, this can be of the 2D form if there are multiple 
+//     //y dimensions (q) with an x-dimension of p.
+//     int p = ni;
+//     int q = min(NTHREADS/ni, 32);    
+//     int sharedMemSizeEval    = p*q*(sizeof(DS4) + sizeof(float4)); //4th order Double Single
+//     int argIdx = 0;
+//     
+//     //Compute the number of nj particles used per-block (note can have multiple blocks per thread-block in 2D case)
+//     int nj_scaled       = n_norm(nj, q*(sapdevice->get_NBLOCKS()));
+//     int thisBlockScaled = nj_scaled/((sapdevice->get_NBLOCKS())*q);
+//     int nthreads        = NTHREADS;
+//         
+//     
+//     int ni_offset = 0;
 
-    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->pPos_j.ptr());
-    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->pos_i.ptr());
-    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->iParticleResults.ptr());
-    sapdevice->evalgravKernelCombined.set_arg<double>(argIdx++, &EPS2);
-
-    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->pVel_j.ptr());
-    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->id_j.ptr());
-    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->vel_i.ptr());
-    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->id_i.ptr());
-    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->ds_i.ptr());     
-    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->ngb_count_i.ptr());
-    sapdevice->evalgravKernelCombined.set_arg<void*>(argIdx++,  sapdevice->ngb_list_i.ptr());
-    sapdevice->evalgravKernelCombined.set_arg<int>(argIdx++, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
-
-    sapdevice->evalgravKernelCombined.setWork_1D(2*NTHREADS, ni_total); //Default
-    sapdevice->evalgravKernelCombined.execute();
+    int argIdx          = 0;
+    bool doNGB          = true;
+    bool doNGBList      = true;
     
+    sapdevice->resetDevBuffers.set_arg<int  >(argIdx++, &ni_total);
+    sapdevice->resetDevBuffers.set_arg<bool >(argIdx++, &doNGB);
+    sapdevice->resetDevBuffers.set_arg<bool >(argIdx++, &doNGBList);
+    sapdevice->resetDevBuffers.set_arg<int  >(argIdx++, &integrationOrder);
+    sapdevice->resetDevBuffers.set_arg<void*>(argIdx++, sapdevice->iParticleResults.ptr());
+    sapdevice->resetDevBuffers.set_arg<void*>(argIdx++, sapdevice->ds_i.ptr());
+    sapdevice->resetDevBuffers.set_arg<void*>(argIdx++, sapdevice->ngb_count_i.ptr());
+    sapdevice->resetDevBuffers.setWork_2D(256, ni_total);
+    sapdevice->resetDevBuffers.execute();
     
-    return 0.0;
-    
+//     argIdx = 0;
+//     sapdevice->evalgravKernelTemplate.set_arg<int  >(argIdx++, &nj);      //Total number of j particles
+//     sapdevice->evalgravKernelTemplate.set_arg<int  >(argIdx++, &thisBlockScaled);
+//     sapdevice->evalgravKernelTemplate.set_arg<int  >(argIdx++, &ni_offset);    
+//     sapdevice->evalgravKernelTemplate.set_arg<int  >(argIdx++, &ni_total);   
+// 
+//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->pPos_j.ptr());
+//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->pos_i.ptr());
+//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->iParticleResults.ptr());
+//     sapdevice->evalgravKernelTemplate.set_arg<double>(argIdx++, &EPS2);
+// 
+//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->pVel_j.ptr());
+//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->id_j.ptr());
+//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->vel_i.ptr());
+//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->id_i.ptr());
+//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->ds_i.ptr());     
+//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->ngb_count_i.ptr());
+//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->ngb_list_i.ptr());
+// //     sapdevice->evalgravKernelTemplate.set_arg<int>(argIdx++, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
+// 
+// 
+//     sapdevice->evalgravKernelTemplate.setWork_threadblock2D(p, q, (sapdevice->get_NBLOCKS()), 1); //Default
+//     sapdevice->evalgravKernelTemplate.execute();
+// 
+//     sapdevice->ngb_count_i.d2h();
+//     sapdevice->ds_i.d2h();
+//     sapdevice->iParticleResults.d2h();
+//     sapdevice->ngb_list_i.d2h();
+//     
+//    
+//     for(int i=0; i < 10; i++)
+//     {
+//       float2 *dsmin = &sapdevice->ds_i[0];
+//       fprintf(stderr,"ATOM: %d\tAcc: %f\t%f\t%f\t%f\tJrk: %f\t%f\t%f\tNNB: %d ( %f )\t %d  \n", 
+//               i,
+//               sapdevice->iParticleResults[i].x,sapdevice->iParticleResults[i].y,
+//               sapdevice->iParticleResults[i].z,sapdevice->iParticleResults[i].w,
+//               sapdevice->iParticleResults[i+ni_total].x,sapdevice->iParticleResults[i+ni_total].y,
+//               sapdevice->iParticleResults[i+ni_total].z,
+//               host_float_as_int(dsmin[i].x), dsmin[i].y,
+//               sapdevice->ngb_count_i[i]
+//              );
+//     }
+//     fprintf(stderr,"====\n");
+//     
+//     
+// //     return 0.0;
+//     
   }
   
 #endif  
   
   
 
-   
+//    ni_total = 10;
   int ni = 0;
   //Loop over the ni-particles in jumps equal to the number of threads
   for(int ni_offset = 0; ni_offset < ni_total; ni_offset += NTHREADS)
@@ -1516,7 +1573,8 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
     int temp = ni / multipleSize; 
     if((ni % multipleSize) != 0 ) temp++;
     ni = temp * multipleSize;
-    
+
+//     ni = 256;
 
     //Dimensions of one thread-block, this can be of the 2D form if there are multiple 
     //y dimensions (q) with an x-dimension of p.
@@ -1596,6 +1654,43 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
 
 
     int argIdx = 0;
+    
+    
+#if 1
+    sapdevice->evalgravKernelTemplate.set_arg<int  >(argIdx++, &nj);      //Total number of j particles
+    sapdevice->evalgravKernelTemplate.set_arg<int  >(argIdx++, &thisBlockScaled);
+    sapdevice->evalgravKernelTemplate.set_arg<int  >(argIdx++, &ni_offset);    
+    sapdevice->evalgravKernelTemplate.set_arg<int  >(argIdx++, &ni_total);   
+
+    sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->pPos_j.ptr());
+    sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->pos_i.ptr());
+    sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->iParticleResults.ptr());
+    sapdevice->evalgravKernelTemplate.set_arg<double>(argIdx++, &EPS2);
+
+    sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->pVel_j.ptr());
+    sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->id_j.ptr());
+    sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->vel_i.ptr());
+    sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->id_i.ptr());
+    sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->ds_i.ptr());     
+    sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->ngb_count_i.ptr());
+    sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->ngb_list_i.ptr());
+    sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->acc_i.ptr());
+    sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->pAcc_j.ptr());
+    
+    sharedMemSizeEval   = p*q*(sizeof(double4) + sizeof(double4)  + sizeof(double4));
+    
+//     if(p == 100) sharedMemSizeEval = 11200;
+//     sharedMemSizeEval = 0;
+//     printf("Size: %d \n", sharedMemSizeEval);
+    sapdevice->evalgravKernelTemplate.set_arg<int>(argIdx++, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
+
+
+    sapdevice->evalgravKernelTemplate.setWork_threadblock2D(p, q, (sapdevice->get_NBLOCKS()), 1); //Default
+    sapdevice->evalgravKernelTemplate.execute();
+
+#else    
+        
+    
     sapdevice->evalgravKernel.set_arg<int  >(argIdx++, &nj);      //Total number of j particles
     sapdevice->evalgravKernel.set_arg<int  >(argIdx++, &thisBlockScaled);
     sapdevice->evalgravKernel.set_arg<int  >(argIdx++, &ni_offset);    
@@ -1683,6 +1778,8 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
     }
     sapdevice->reduceForces.setWork_threadblock2D(nthreads, 1, nblocks, 1);
     sapdevice->reduceForces.execute();
+    
+#endif    
 
   } //Loop over ni
 

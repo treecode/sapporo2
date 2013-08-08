@@ -117,6 +117,14 @@ int main(int argc, char *argv[]) {
   n1 = 0;
   n2 = 2*ipmax;
   n2 = n;
+  
+#if 0
+      int i = 0 ;
+      grav.startGravCalc(n, 256,
+                        id + i,
+                        pos+i, vel+i,
+                        acc+i, jrk+i, pot+i, eps2, h2, NULL);
+#endif      
 #if 1
   for (int i = n1; i < n2; i += ipmax) {
     int npart = min(n2 - i, ipmax);
@@ -134,44 +142,65 @@ int main(int argc, char *argv[]) {
 			eps2, h2,
 			//acc+i, jrk+i,NULL, NULL, pot+i, nnb+i, NULL, true);
 			acc+i, jrk+i,NULL, NULL, pot+i, nnb+i, ds_min+i, true);
-                        
+
+#if 1    
      for(int j=i; j < i+npart; j++){
      printf("calchalf2: %d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\t%f\n", j,
             acc[j][0], acc[j][1], acc[j][2],
             pot[j], jrk[j][0],
             jrk[j][1], jrk[j][2], nnb[j], ds_min[j]);
+     if(j > 10){
+       
+       grav.read_ngb_list(0);
+       for (int i1 = i; i1 < i + 10; i1++) {
+         grav.get_ngb_list(0,
+                           i1 - i,
+                           n,
+                           nngb[i1],
+                           ngb_list);
+         fprintf(stderr," ipipe= %d: n_ngb= %d\n", i1 - i, nngb[i1]);
+//          if(i1-i == 255){
+//                  for(int j=0; j < nngb[i1]; j++)
+//                  {
+//                          fprintf(stderr,"%d\t %d\n", j, ngb_list[j]);
+//                  }
+//          }
+       }
+       exit(0);
      }
-// 
+     }
+#endif     
+
 //  exit(0);
- /* Test to retrieve the particle data after prediction */
-    {
-//     int addr = 0;
-    for (int j = 530; j != 183; j = 183) {
-  
-    double temp_pos[3], temp_vel[3], temp_acc[3], temp_jrk[3], temp_ppos[3], temp_pvel[3];
-    double mass;
-    double ID;
-    double eps2;
-   
-    printf(" Ervoor \n"); 
-    grav.retrieve_j_particle_state(j, mass,
-                                   ID, eps2, 
-                                   temp_pos, temp_vel, 
-                                   temp_acc, temp_jrk, temp_ppos, 
-                                   temp_pvel, NULL);
- 
-               
-    printf("\nJ-data: Pos: %f %f %f \tvel: %f %f %f \n",
-           temp_pos[0], temp_pos[1],temp_pos[2],
-           temp_vel[0], temp_vel[1],temp_vel[2]);
-    printf("J-data: acc: %f %f %f \tjrk: %f %f %f \n",
-           temp_acc[0], temp_acc[1],temp_acc[2],
-           temp_jrk[0], temp_jrk[1],temp_jrk[2]);
-    printf("J-data: PPos: %f %f %f \tPvel: %f %f %f \n",
-           temp_ppos[0], temp_ppos[1],temp_ppos[2],
-           temp_pvel[0], temp_pvel[1],temp_pvel[2]);           
-     }
-    }
+//  /* Test to retrieve the particle data after prediction */
+//     {
+// //     int addr = 0;
+//     for (int j = 530; j != 183; j = 183) {
+//   
+//     double temp_pos[3], temp_vel[3], temp_acc[3], temp_jrk[3], temp_ppos[3], temp_pvel[3];
+//     double mass;
+//     double ID;
+//     double eps2;
+//    
+//     printf(" Ervoor \n"); 
+//     grav.retrieve_j_particle_state(j, mass,
+//                                    ID, eps2, 
+//                                    temp_pos, temp_vel, 
+//                                    temp_acc, temp_jrk, temp_ppos, 
+//                                    temp_pvel, NULL);
+//  
+//                
+//     printf("\nJ-data: Pos: %f %f %f \tvel: %f %f %f \n",
+//            temp_pos[0], temp_pos[1],temp_pos[2],
+//            temp_vel[0], temp_vel[1],temp_vel[2]);
+//     printf("J-data: acc: %f %f %f \tjrk: %f %f %f \n",
+//            temp_acc[0], temp_acc[1],temp_acc[2],
+//            temp_jrk[0], temp_jrk[1],temp_jrk[2]);
+//     printf("J-data: PPos: %f %f %f \tPvel: %f %f %f \n",
+//            temp_ppos[0], temp_ppos[1],temp_ppos[2],
+//            temp_pvel[0], temp_pvel[1],temp_pvel[2]);           
+//      }
+//     }
     
 //     exit(0);
     
@@ -179,22 +208,22 @@ int main(int argc, char *argv[]) {
 //      exit(0);
     
 //      exit(0);
- /*      grav.read_ngb_list(cluster_id);
-       for (int i1 = i; i1 < i + npart; i1++) {
-         grav.get_ngb_list(cluster_id,
-                           i1 - i,
-                           n,
-                           nngb[i1],
-                           ngb_list);
-         fprintf(stderr," ipipe= %d: n_ngb= %d\n", i1 - i, nngb[i1]);
-	 if(i1-i == 255){
-		 for(int j=0; j < nngb[i1]; j++)
-		 {
-			 fprintf(stderr,"%d\t %d\n", j, ngb_list[j]);
-		 }
-	 }
-       }
-exit(0);   */                     
+//        grav.read_ngb_list(0);
+//        for (int i1 = i; i1 < i + npart; i1++) {
+//          grav.get_ngb_list(0,
+//                            i1 - i,
+//                            n,
+//                            nngb[i1],
+//                            ngb_list);
+//          fprintf(stderr," ipipe= %d: n_ngb= %d\n", i1 - i, nngb[i1]);
+// 	 if(i1-i == 255){
+// 		 for(int j=0; j < nngb[i1]; j++)
+// 		 {
+// 			 fprintf(stderr,"%d\t %d\n", j, ngb_list[j]);
+// 		 }
+// 	 }
+//        }
+// exit(0);                      
 
   }
   
@@ -288,7 +317,8 @@ exit(0);   */
   double (*jrkx)[3] = new double[n][3];
   double *potx = new double[n];
 
-  fprintf(stderr, "Computing forces on CPU\n");
+  n2 = 1; //Otherwise CPU takes years
+  fprintf(stderr, "Computing forces on CPU: nx: %d n1: %d n2: %d\n", nx, n1,n2);
   double t1 = get_time();
 
   for (int i = nx*n1; i < nx*n2; i++) {

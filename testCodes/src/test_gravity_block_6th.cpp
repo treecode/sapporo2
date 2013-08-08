@@ -146,10 +146,13 @@ int main(int argc, char *argv[]) {
 			acc+i, jrk+i,snp+i, crk+i, pot+i, nnb+i, NULL, true);
                         
     for(int j=i; j < i+npart; j++){
-    printf("calchalf2: %d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\n", j,
+    printf("calchalf2: %d\t%f\t%f\t%f\t%f\t|jrk| %f\t%f\t%f\t||nnb %d\tsnp: %f\t%f\t%f\n", j,
            acc[j][0], acc[j][1], acc[j][2],
            pot[j], jrk[j][0],
-           jrk[j][1], jrk[j][2], nnb[j]);
+           jrk[j][1], jrk[j][2], nnb[j],
+           snp[j][0], snp[j][1], snp[j][2]
+          );
+//     if(j >  10)    exit(0);
     }
 //     exit(0);
 
@@ -326,14 +329,14 @@ int main(int argc, char *argv[]) {
 	    sqrt((dj.x*dj.x + dj.y*dj.y+dj.z*dj.z)/(jrkx[i][0]*jrkx[i][0] + jrkx[i][1]*jrkx[i][1]+ jrkx[i][2]*jrkx[i][2])),
 	    fabs(dpot)/potx[i]);
 
-//     fprintf(stdout, "%g %g %g  %g %g %g  %g\n",
-// 	    acc[i][0], acc[i][1], acc[i][2],
+//     fprintf(stdout, "Acc  : %d |  %g %g %g  Jrk %g %g %g  %g\n",
+// 	    i, acc[i][0], acc[i][1], acc[i][2],
 // 	    jrk[i][0], jrk[i][1], jrk[i][2], pot[i]);
 //     double a = pot[i];
 //     double b = potx[i];
-//     fprintf(stdout, " %g %g %g \n",
+//     fprintf(stdout, "Pot %g %g %g \n",
 // 	    a, b, (a-b)/b);
-//     fprintf(stdout, "%g %g %g  %g %g %g  %g\n",
+//     fprintf(stdout, "Accx %g %g %g  %g %g %g  %g\n",
 // 	    accx[i][0], accx[i][1], accx[i][2],
 // 	    jrkx[i][0], jrkx[i][1], jrkx[i][2], potx[i]);
 

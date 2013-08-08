@@ -25,7 +25,9 @@ CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include -msse4
 NVCC      = $(CUDA_TK)/bin/nvcc  
 
 
-NVCCFLAGS = -arch sm_20 
+NVCCFLAGS = -arch sm_35
+#NVCCFLAGS = -arch sm_20 
+#NVCCFLAGS = -arch sm_30
 #NVCCFLAGS = -arch sm_30 -D NTHREADS=${curNTHREADS} -D NPIPES=${curNPIPES} -D NBLOCKS_PER_MULTI=${curNMULTI}
 
 # Use with Mac OS X
