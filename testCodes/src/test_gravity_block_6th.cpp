@@ -91,7 +91,7 @@ int main(int argc, char *argv[]) {
   }
   
   int integrationOrder = 2;     //6th
-  int integrationPrecision = 0; //Default double-precision
+  int integrationPrecision = DOUBLE; //Default double-precision
   int nDevices = 1;
   
  
@@ -168,6 +168,10 @@ int main(int argc, char *argv[]) {
                         
   }
 #endif
+
+  
+//   return 0;
+
 //  cerr << "After last half \n";  exit(0);
 
   for (int kk = 0; kk < 1; kk++) {
@@ -246,10 +250,12 @@ int main(int argc, char *argv[]) {
   grav.close();
   }
 
+
   double (*accx)[3] = new double[n][3];
   double (*jrkx)[3] = new double[n][3];
   double *potx = new double[n];
 
+    n2 = 1; //Otherwise CPU takes years
   fprintf(stderr, "Computing forces on CPU\n");
   double t1 = get_time();
 

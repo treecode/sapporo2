@@ -16,9 +16,6 @@ CUDA DoubleSingle kernels
 #define inout
 #define __out
 
-
-enum { GRAPE5   = 0, FOURTH, SIXTH, EIGHT};        //0, 1, 2, 3
-
 #if 0   /* use this one to compute accelerations in DS */
 #define _GACCDS_
 #endif
@@ -194,10 +191,13 @@ struct DS2X {
 };
 
 
+__device__ __forceinline__  float RSQRT(float val) { return rsqrtf(val); }
+__device__ __forceinline__  double RSQRT(double val) { return rsqrt(val); }
+// template<typename T> __device__ __forceinline__  T RSQRT(T val) { return rsqrt(val); }
+// template<>           __device__ __forceinline__  float RSQRT(float val) { return rsqrtf(val); }
+// template<>           __device__ __forceinline__  double RSQRT(double val) { return rsqrt(val); }
 
-template<typename T> __device__ __forceinline__  T RSQRT(T val) { return rsqrt(val); }
-template<>           __device__ __forceinline__  float RSQRT(float val) { return rsqrtf(val); }
-template<>           __device__ __forceinline__  double RSQRT(double val) { return rsqrt(val); }
+
 // template<>           __device__ __forceinline__  double RSQRT(double val) { return rsqrtf(val); }
 // template<>           __device__ __forceinline__  double RSQRT(double val) { return 1.0/sqrt(val); }
 
@@ -472,6 +472,7 @@ __device__ double atomicAdd(double* address, double val)
     } while (assumed != old);
     return __longlong_as_double(old);
 }
+
 
 __device__ __forceinline__ double atomicMin(double *address, double val)
 {
@@ -1250,8 +1251,8 @@ struct __align__(16) particleVelID
 
 
 template <typename Tacc>
-struct __align__(16) particleAcc
-// struct particleAcc
+// struct __align__(16) particleAcc
+struct particleAcc
 {
   Tacc accx, accy, accz;
 
@@ -1278,6 +1279,7 @@ union dsminUnion
 
 template <typename T, typename T4, const bool NGB2>
 struct  devForce2
+// struct __align__(16) devForce2
 {
 public:
   T accx, accy, accz;
@@ -1340,10 +1342,10 @@ __device__ __forceinline__ void body_body_interaction(
                                       outType                           &outVal,
                                       inout int                         *ngb_list,
                                       int                               &n_ngb,
-                                      particle<Tpos, Tvel>              &iParticle,
-                                      const particlePosMass<Tpos, Tvel> &jpos,
-                                      const particleVelID<Tvel>         &jVelID,
-                                      const particleAcc<Tvel>           &jAcc,
+                                      particle<Tpos, Tvel>              iParticle,
+                                      const particlePosMass<Tpos, Tvel> jpos,
+                                      const particleVelID<Tvel>         jVelID,
+                                      const particleAcc<Tvel>           jAcc,
                                       const Tvel                        &EPS2) 
 {
 
@@ -1352,10 +1354,7 @@ __device__ __forceinline__ void body_body_interaction(
     const Tvel drx = (jpos.posx - iParticle.posx);
     const Tvel dry = (jpos.posy - iParticle.posy);
     const Tvel drz = (jpos.posz - iParticle.posz);
-
     const Tvel ds2 = drx*drx + dry*dry + drz*drz;
-
-
 
     if(doNGB)
     {     
@@ -1376,10 +1375,10 @@ __device__ __forceinline__ void body_body_interaction(
       }
     }
 
-   // const Tvel inv_ds = RSQRT(ds2+EPS2);
-//    Tvel inv_ds = RSQRT(ds2+EPS2);     
-    const double inv_ds = rsqrtf(ds2+EPS2);           
+    const Tvel inv_ds = RSQRT(ds2+EPS2);
 
+//     Tvel inv_ds = RSQRT(ds2+EPS2);     
+//     const double inv_ds = rsqrtf(ds2+EPS2);   
 //     inv_ds = isnan(inv_ds) ? 0 : inv_ds;
 
     const Tvel minvr1 = jpos.mass_h2 * inv_ds; 
@@ -1395,11 +1394,10 @@ __device__ __forceinline__ void body_body_interaction(
     outVal.accy   += minvr3   * dry;
     outVal.accz   += minvr3   * drz;
     outVal.pot    += (factor1)* minvr1;
-//     outVal.pot += jpos.mass_h2;
 
     if(integrationOrder == GRAPE5) return;
     
-    asm("//SAPPORO > GRAPE5");
+//     asm("//SAPPORO > GRAPE5");
 
     //Jerk
     const Tvel dvx = jVelID.velx - iParticle.velx;
@@ -1415,7 +1413,7 @@ __device__ __forceinline__ void body_body_interaction(
       return;
     }
 
-    asm("//SAPPORO > FOURTH");
+//     asm("//SAPPORO > FOURTH");
 
     const Tvel dax = jAcc.accx - iParticle.accx;
     const Tvel day = jAcc.accy - iParticle.accy;
@@ -1446,6 +1444,1024 @@ __device__ __forceinline__ void body_body_interaction(
   }
 }
 
+template<typename posType, typename T, typename T3, typename T4, const bool doNGB, 
+        const bool doNGBList, const int integrationOrder>
+__device__  __forceinline__ void dev_evaluate_gravity_reduce_template_dev(
+    const int        nj_total, 
+    const int        nj,
+    const int        ni_offset,
+    const int        ni_total,
+    const double4    *pos_j, 
+    const double4    *pos_i,
+    __out double4    *result_i,
+    const double     EPS2_d,
+    const double4    *vel_j,
+    const int        *id_j,                                     
+    const double4    *vel_i,                                     
+    const int        *id_i,
+    __out float2     *dsminNNB,
+    __out int        *ngb_count_i,
+    __out int        *ngb_list,
+    const  double4   *acc_i_in,   
+    const  double4   *acc_j)
+{
+  const int tx  = threadIdx.x;
+  const int ty  = threadIdx.y;
+  const int bx  =  blockIdx.x;
+  const int Dim =  blockDim.x*blockDim.y;
+
+//   __shared__ particlePosMass<posType,T>  shared_posx[256];
+//   __shared__ particleVelID<T>            shared_velid[256];
+//   __shared__ particleAcc<T>              shared_jacc[256]; 
+
+  extern __shared__ char* shared_mem[];  
+  particlePosMass<posType,T> *shared_posx  = ( particlePosMass<posType,T>*)&shared_mem[0];
+  particleVelID<T>           *shared_velid = ( particleVelID<T>*)&shared_posx[integrationOrder > GRAPE5 ? Dim : 0];
+  particleAcc<T>             *shared_jacc  = ( particleAcc<T>*)&shared_velid[integrationOrder > FOURTH ? Dim : 0];
+
+  int local_ngb_list[NGB_PB + 1];
+  int n_ngb = 0;
+
+  const T EPS2 = (T)EPS2_d;
+  
+  particle<posType, T> iParticle;
+
+  iParticle.setPosMass(pos_i[tx+ni_offset]);
+  if(integrationOrder > GRAPE5)
+  {
+    iParticle.setVel    (vel_i[tx+ni_offset]);
+    iParticle.pID  =      id_i[tx+ni_offset];
+  }
+
+TODO set acc
+
+  const T LARGEnum = 1.0e10f;
+
+  devForce2<T, T4, doNGB> out2;
+
+  int tile       = 0;
+  int ni         = bx * (nj*blockDim.y) + nj*ty;
+  const int offy = blockDim.x*ty;
+  for (int i = ni; i < ni+nj; i += blockDim.x)
+  {
+    const int addr = offy + tx;
+
+    if (i + tx < nj_total) {
+      shared_posx [addr].setPosMass(pos_j[i + tx]);
+      
+      if(integrationOrder > GRAPE5)
+      {
+        shared_velid[addr].setVel (vel_j[i + tx]);
+        shared_velid[addr].set_pID( id_j[i + tx]);
+
+        if(integrationOrder > FOURTH)
+        {
+          shared_jacc[addr].setAcc(acc_j[i + tx]);
+        }
+      }
+    } else {
+      shared_posx [addr].setPosMass(LARGEnum,LARGEnum,LARGEnum,0);  
+      if(integrationOrder > GRAPE5)
+      {
+        shared_velid[addr].setVel    (0.0,0.0,0.0);
+        shared_velid[addr].set_pID   (-1);
+        
+        if(integrationOrder > FOURTH)
+        {
+          shared_jacc[addr].setAcc  (0.0,0.0,0.0);
+        }
+      }          
+    }
+
+    __syncthreads();
+
+    const int j  = min(nj - tile*blockDim.x, blockDim.x);
+    const int j1 = j & (-32);
+
+#pragma unroll 32
+    for (int k = 0; k < j1; k++) 
+      body_body_interaction <devForce2<T, T4, doNGB>, posType,T,  doNGB, doNGBList, integrationOrder>(
+          out2,
+          local_ngb_list, n_ngb,
+          iParticle,
+          shared_posx[offy+k],  shared_velid[offy+k], shared_jacc[offy+k],
+          EPS2);
+
+
+    for (int k = j1; k < j; k++) 
+      body_body_interaction <devForce2<T, T4, doNGB>, posType, T,  doNGB, doNGBList, integrationOrder>(
+          out2,
+          local_ngb_list, n_ngb,
+          iParticle,
+          shared_posx[offy+k],  shared_velid[offy+k], shared_jacc[offy+k], 
+          EPS2);
+
+    __syncthreads();
+
+    tile++;
+  } //end while
+
+  const int addr   = offy + tx;
+#if 1
+  //Reduce acceleration and jerk. We know that this has enough
+  //space to do in shmem because of design of shmem allocation
+  T4 *shared_acc   = (T4*)&shared_posx[0];
+  T4 *shared_jrk   = (T4*)&shared_acc[Dim];
+//   T4 *shared_snp   = (T4*)&shared_jrk[integrationOrder > FOURTH ? Dim : 0];
+  T3 *shared_snp   = (T3*)&shared_jrk[integrationOrder > FOURTH ? Dim : 0];
+
+  shared_acc[addr] = out2.storeAcc();
+
+  if(integrationOrder > GRAPE5)
+  {
+    shared_jrk[addr] = out2.storeJrk();
+    if(integrationOrder > FOURTH)
+    {
+      //shared_snp[addr] = out2.storeSnp();
+      shared_snp[addr].x = out2.snpx;
+      shared_snp[addr].y = out2.snpy;
+      shared_snp[addr].z = out2.snpz;
+    }
+  }
+
+  __syncthreads();
+
+  if (ty == 0)
+  {
+    for (int i = blockDim.x; i < Dim; i += blockDim.x)
+    {
+      out2.accx += shared_acc[i + tx].x;
+      out2.accy += shared_acc[i + tx].y;
+      out2.accz += shared_acc[i + tx].z;
+      out2.pot  += shared_acc[i + tx].w;
+      
+      if(integrationOrder > GRAPE5)
+      {
+        out2.jrkx += shared_jrk[i + tx].x;
+        out2.jrky += shared_jrk[i + tx].y;
+        out2.jrkz += shared_jrk[i + tx].z;
+
+        if(integrationOrder > FOURTH)
+        {
+          out2.snpx += shared_snp[i + tx].x;
+          out2.snpx += shared_snp[i + tx].y;
+          out2.snpx += shared_snp[i + tx].z;            
+        }
+      }
+    }
+  }
+  __syncthreads();
+#endif
+
+  //Reduce neighbours info
+  int    *shared_ngb = (int*)&shared_posx[Dim];
+  int    *shared_ofs = (int*)&shared_ngb[Dim];
+
+#if 1
+  if(doNGB || doNGBList)
+  {
+    int    *shared_nid = (int*)&shared_ofs[Dim];
+    float  *shared_ds  = (float*)&shared_nid[Dim];
+
+    shared_ngb[addr] = n_ngb;
+    shared_ofs[addr] = 0;
+
+    shared_ds [addr] = out2.ds2min;
+    shared_nid[addr] = out2.nnb;
+
+    __syncthreads();
+
+    if (ty == 0)
+    {
+      for (int i = blockDim.x; i < Dim; i += blockDim.x)
+      {
+        const int addr2 = i + tx;
+
+        if(doNGB)
+        {
+          if(shared_ds [addr2]  < out2.ds2min) 
+          {
+            out2.nnb    = shared_nid[addr2];
+            out2.ds2min = shared_ds [addr2];
+          }       
+        }
+        
+        if(doNGBList)
+        {
+          shared_ofs[addr2] = min(n_ngb, NGB_PB);
+          n_ngb           += shared_ngb[addr2];
+        }
+      }
+
+      if(doNGBList)
+        n_ngb  = min(n_ngb, NGB_PB);
+    }
+    __syncthreads();
+  }
+#endif //NGB info
+
+  int ngbListStart = 0;
+
+  double4 *acc_i = &result_i[0];
+  double4 *jrk_i = &result_i[ni_total];
+  double4 *snp_i = &result_i[ni_total*2];
+
+
+  if (ty == 0) 
+  {
+#if 0 //Atomic section
+    int *atomicVal  = ngb_count_i;
+    float *waitList = (float*)&shared_posx;
+    if(threadIdx.x == 0)
+    {
+      int res          = atomicExch(&atomicVal[0], 1); //If the old value (res) is 0 we can go otherwise sleep
+      int waitCounter  = 0;
+      while(res != 0)
+      {
+        //Sleep
+        for(int i=0; i < (1024); i++)
+        {
+          waitCounter += 1;
+        }
+        //Test again
+        waitList[0] = (float)waitCounter;
+        res = atomicExch(&atomicVal[0], 1); 
+      }
+    }
+    __syncthreads();
+
+    //Convert results to double and write    
+    double4 temp = out2.storeAccD4();
+    double4 jrk = out2.storeJrkD4();
+    acc_i[   tx+ni_offset].x   += temp.x;
+    acc_i[   tx+ni_offset].y   += temp.y;
+    acc_i[   tx+ni_offset].z   += temp.z;
+    acc_i[   tx+ni_offset].w   += temp.w;
+
+    jrk_i[   tx+ni_offset].x   += jrk.x;
+    jrk_i[   tx+ni_offset].y   += jrk.y;
+    jrk_i[   tx+ni_offset].z   += jrk.z;
+    
+    if(doNGB)
+    {
+      union
+      {
+        double x;
+        float2 y;
+      } temp2; 
+      temp2.y = dsminNNB[tx+ni_offset];
+      if(out2.ds2min <  temp2.y.y)
+      {
+        temp2.y.y = out2.ds2min;
+        temp2.y.x = __int_as_float(out2.nnb);
+
+        dsminNNB[tx+ni_offset] = temp2.y;
+
+      }
+    }
+    if(doNGBList)
+    {
+      ngbListStart = ngb_count_i[tx+ni_offset];
+      ngb_count_i[tx+ni_offset] += n_ngb;
+    }
+
+
+    if(threadIdx.x == 0)
+    {
+      atomicExch(&atomicVal[0], 0); //Release the lock
+    }
+    
+#else
+    double4 temp = out2.storeAccD4();
+
+    atomicAdd(&acc_i[tx+ni_offset].x, temp.x);
+    atomicAdd(&acc_i[tx+ni_offset].y, temp.y);
+    atomicAdd(&acc_i[tx+ni_offset].z, temp.z);
+    atomicAdd(&acc_i[tx+ni_offset].w, temp.w);
+
+    if(integrationOrder > GRAPE5)
+    {
+      double4 jrk  = out2.storeJrkD4();
+      atomicAdd(&jrk_i[tx+ni_offset].x, jrk.x);
+      atomicAdd(&jrk_i[tx+ni_offset].y, jrk.y);
+      atomicAdd(&jrk_i[tx+ni_offset].z, jrk.z);
+
+      if(integrationOrder > FOURTH)
+      {
+        double4 snp  = out2.storeSnpD4();
+        atomicAdd(&snp_i[tx+ni_offset].x, snp.x);
+        atomicAdd(&snp_i[tx+ni_offset].y, snp.y);
+        atomicAdd(&snp_i[tx+ni_offset].z, snp.z);
+      }
+    }
+
+    if(doNGB)
+    {
+      //Use a double to encode the float distance and int neighbour ID
+      union { double x; float2 y; } temp2; 
+
+      temp2.y.y = out2.ds2min;
+      temp2.y.x = __int_as_float(out2.nnb);
+
+      atomicMin((double*)&dsminNNB[tx+ni_offset], temp2.x);
+    }
+    //Prefix summing for neighbour list
+    if(doNGBList)
+    {
+      ngbListStart = atomicAdd(&ngb_count_i[tx+ni_offset],n_ngb);
+    }
+#endif
+  } //ty == 0
+
+  //Write the neighbour list, this blocks start-offset = ngbListStart
+  if(doNGBList)
+  {
+    //Share ngbListStart with other threads in the block
+    const int yBlockOffset = shared_ofs[addr];
+    __syncthreads();
+    if(ty == 0)
+    {
+      shared_ofs[threadIdx.x] = ngbListStart;
+    }
+    __syncthreads();
+    ngbListStart    = shared_ofs[threadIdx.x];
+
+
+    int startList   = (ni_offset + tx)  * NGB_PB;
+    int prefixSum   = ngbListStart + yBlockOffset; //this blocks offset + y-block offset
+    int startWrite  = startList    + prefixSum; 
+
+    if(prefixSum + shared_ngb[addr] < NGB_PB) //Only write if we don't overflow
+    {
+      for (int i = 0; i < shared_ngb[addr]; i++) 
+      {
+         ngb_list[startWrite + i] = local_ngb_list[i];
+      }
+    }
+  }//doNGBList
+}
+
+
+
+#endif
+
+#define CALL( PRECISION1, PRECISION2, PRECISION3, PRECISION4, DONGB, DONGBLIST, ORDER ) { \
+    dev_evaluate_gravity_reduce_template_dev<PRECISION1, PRECISION2, PRECISION3, PRECISION4, DONGB, DONGBLIST, ORDER>( \
+        nj_total,  \
+        nj, \
+        ni_offset,\
+        ni_total,\
+        pos_j, \
+        pos_i, \
+        result_i, \
+        EPS2_d, \
+        vel_j, \
+        id_j,\
+        vel_i,\
+        id_i, \
+        ds2min_i,\
+        ngb_count_i, \
+        ngb_list, \
+        acc_i, \
+        acc_j); \
+} \
+
+
+#define CUDA_GLOBAL( FUNCNAME,  PRECISION1, PRECISION2, PRECISION3, PRECISION4, DONGB, DONGBLIST, ORDER) \
+  extern "C" __global__ void \
+      FUNCNAME ( \
+    const int        nj_total,\
+    const int        nj,\
+    const int        ni_offset,\
+    const int        ni_total,\
+    const double4    *pos_j,\
+    const double4    *pos_i,\
+    __out double4    *result_i,\
+    const double     EPS2_d,\
+    const double4    *vel_j,\
+    const int        *id_j,\
+    const double4    *vel_i,\
+    const int        *id_i,\
+    __out float2     *ds2min_i,\
+    __out int        *ngb_count_i,\
+    __out int        *ngb_list,\
+    const double4    *acc_i,\
+    const double4    *acc_j)\
+{\
+CALL( PRECISION1, PRECISION2, PRECISION3, PRECISION4, DONGB, DONGBLIST, ORDER); \
+} \
+
+
+//Second order, float precision, no neighbour info
+CUDA_GLOBAL ( dev_evaluate_gravity_second_float, float, float, float3, float4, false, false, GRAPE5 );
+//Second order, default GRAPE precision. No neighbour info
+CUDA_GLOBAL ( dev_evaluate_gravity_second_DS, DSX, float, float3, float4, false, false, GRAPE5);
+//Fourth order, default GRAPE precision. Including nearest neighbour and neighbour list
+CUDA_GLOBAL ( dev_evaluate_gravity_fourth_DS, DSX, float, float3, float4, true, true, FOURTH );
+//Fourth order, full native double precision. Including nearest neighbour and neighbour list
+CUDA_GLOBAL ( dev_evaluate_gravity_fourth_double, double, double, double3, double4, true, true, FOURTH );
+//Sixth order, full native double precision. Including nearest neighbour and neighbour list
+CUDA_GLOBAL ( dev_evaluate_gravity_sixth_double, double, double, double3, double4, true, true, SIXTH);
+
+extern "C" __global__ void
+// __launch_bounds__(NTHREADS)
+dev_evaluate_gravity_reduce_templatedfdf(
+    const int        nj_total, 
+    const int        nj,
+    const int        ni_offset,
+    const int        ni_total,
+    const double4    *pos_j, 
+    const double4    *pos_i,
+    __out double4    *result_i, 
+    const double     EPS2_d,
+    const double4    *vel_j,
+    const int        *id_j,                                     
+    const double4    *vel_i,                                     
+    const int        *id_i,
+    __out float2     *ds2min_i,
+    __out int        *ngb_count_i,
+    __out int        *ngb_list,
+    const double4    *acc_i,   
+    const double4    *acc_j) 
+{
+  
+//     CALL( DSX, float, float3, float4, true, true, FOURTH);
+//   if(predefinedMethod == GRAPE6){
+// //     asm("//JBX");
+//     CALL( DSX, float, float3, float4, true, true, FOURTH);
+// //     asm("//JBXX");
+//   }
+//   else if(predefinedMethod == GRAPE6DP)
+//   {
+//     asm("//JBY");
+//     CALL( double, double, double3, double4, true, true, FOURTH);
+//     asm("//JBYY");
+//   }
+
+
+//   switch(predefinedMethod)
+//   {
+//     case GRAPE5SP:
+//       CALL( float, float, float3, float4, false, false, GRAPE5);
+//       break;
+//     case GRAPE5DS:
+//       CALL( DSX, float, float3, float4, false, false, GRAPE5);
+//       break;
+//     case GRAPE6:
+//       CALL( DSX, float, float3, float4, true, true, FOURTH);
+//       break;
+//     case GRAPE6DP:
+//       CALL( double, double, double3, double4, true, true, FOURTH);
+//       break;
+//     case HERMITE6:
+//       CALL( double, double, double3, double4, true, true, SIXTH);
+//       break;
+//     break;
+//     default:
+//       CALL( DSX, float, float3, float4, true, true, FOURTH);
+//       break;
+//   }
+  
+
+ CALL( DSX, float, float3, float4, true, true, FOURTH);
+
+    //tempalte: type of position, type of acceleration/float/etc, acc type * 4, doNGB, doNGBlist
+//    dev_evaluate_gravity_reduce_template_dev<DSX, float, float4, true, true, FOURTH>(
+//     dev_evaluate_gravity_reduce_template_dev<double, double, double4, true, true, SIXTH>(
+
+ //   dev_evaluate_gravity_reduce_template_dev<DSX, float, float3, float4, true, true, FOURTH>(
+//    dev_evaluate_gravity_reduce_template_dev<DSX, float, float3, float4, true, true, FOURTH>(
+//                                             nj_total, 
+//                                             nj,
+//                                             ni_offset,
+//                                             ni_total,
+//                                             pos_j, 
+//                                             pos_i,
+//                                             result_i, 
+//                                             EPS2_d,
+//                                             vel_j,
+//                                             id_j,                                     
+//                                             vel_i,      
+//                                             id_i,
+//                                             ds2min_i,
+//                                             ngb_count_i,
+//                                             ngb_list,
+//                                             acc_i,
+//                                             acc_j);
+
+}
+
+extern "C" __global__ void
+// __launch_bounds__(NTHREADS)
+dev_evaluate_gravity_reduce_template5(
+    const int        predefinedMethod, 
+    const int        nj_total, 
+    const int        nj,
+    const int        ni_offset,
+    const int        ni_total,
+    const double4    *pos_j, 
+    const double4    *pos_i,
+    __out double4    *result_i, 
+    const double     EPS2_d,
+    const double4    *vel_j,
+    const int        *id_j,                                     
+    const double4    *vel_i,                                     
+    const int        *id_i,
+    __out float2     *ds2min_i,
+    __out int        *ngb_count_i,
+    __out int        *ngb_list,
+    const double4    *acc_i,   
+    const double4    *acc_j) 
+{
+  
+//     CALL( DSX, float, float3, float4, true, true, FOURTH);
+//   if(predefinedMethod == GRAPE6){
+// //     asm("//JBX");
+//     CALL( DSX, float, float3, float4, true, true, FOURTH);
+// //     asm("//JBXX");
+//   }
+//   else if(predefinedMethod == GRAPE6DP)
+//   {
+//     asm("//JBY");
+//     CALL( double, double, double3, double4, true, true, FOURTH);
+//     asm("//JBYY");
+//   }
+
+
+//   switch(predefinedMethod)
+//   {
+//     case GRAPE5SP:
+//       CALL( float, float, float3, float4, false, false, GRAPE5);
+//       break;
+//     case GRAPE5DS:
+//       CALL( DSX, float, float3, float4, false, false, GRAPE5);
+//       break;
+//     case GRAPE6:
+//       CALL( DSX, float, float3, float4, true, true, FOURTH);
+//       break;
+//     case GRAPE6DP:
+//       CALL( double, double, double3, double4, true, true, FOURTH);
+//       break;
+//     case HERMITE6:
+//       CALL( double, double, double3, double4, true, true, SIXTH);
+//       break;
+//     break;
+//     default:
+//       CALL( DSX, float, float3, float4, true, true, FOURTH);
+//       break;
+//   }
+  
+
+  CALL( DSX, float, float3, float4, true, true, FOURTH);
+
+
+}
+
+
+
+
+extern "C" __global__ void
+dev_reset_buffers(
+    const int         ni_total,
+    const int         doNGB,
+    const int         doNGBList,
+    const int         integrationOrder,
+    __out double4    *result_i, 
+    __out float2     *ds_i,
+    __out int        *ngb_count_i)
+{
+  const uint bid = blockIdx.y * gridDim.x + blockIdx.x;
+  const uint tid = threadIdx.x;
+  const uint idx = bid * blockDim.x + tid;
+
+
+  if(idx >= ni_total) return;
+
+  if(doNGB)
+  {
+    ds_i[idx] = make_float2(-1, 10e10f);
+  }
+  if(doNGBList)
+  {
+    ngb_count_i[idx] = 0;
+  }
+
+  double4 reset = make_double4(0,0,0,0);
+  result_i[idx] = reset; //Acceleration
+
+  if(integrationOrder >= FOURTH)
+    result_i[idx+ni_total] = reset; //Jrk
+
+  if(integrationOrder >= SIXTH)
+    result_i[idx+ni_total*2] = reset; //Snp
+
+}
+
+    
+#if 0
+
+
+
+template<typename outType, typename Tpos, typename Tvel,  const bool doNGB, const bool doNGBList,
+         const int integrationOrder>
+__device__ __forceinline__ void body_body_interaction2(
+                                      outType                           &outVal,
+                                      inout int                         *ngb_list,
+                                      int                               &n_ngb,
+                                      particle<Tpos, Tvel>              &iParticle,
+                                      const particlePosMass<Tpos, Tvel> jpos,
+                                      const particleVelID<Tvel>         jVelID,                                    
+                                      const Tvel                        &EPS2) 
+{
+
+  if (iParticle.pID != jVelID.pID() || integrationOrder == GRAPE5)    /* assuming we always need ngb */
+  {
+    const float drx = (jpos.posx - iParticle.posx);
+    const float dry = (jpos.posy - iParticle.posy);
+    const float drz = (jpos.posz - iParticle.posz);
+    const float ds2 = drx*drx + dry*dry + drz*drz;
+
+    if(doNGB)
+    {     
+      outVal.setnnb(ds2, jVelID.pID());
+    }
+
+    if(doNGBList)
+    {
+      #if ((NGB_PB & (NGB_PB - 1)) != 0)
+        #error "NGB_PB is not a power of 2!"
+      #endif
+
+      /* WARRNING: In case of the overflow, the behaviour will be different from the original version */
+      if(iParticle.mass_h2 > ds2)
+      {
+        ngb_list[n_ngb & (NGB_PB-1)] = jVelID.pID();
+        n_ngb++;
+      }
+    }
+
+    const float inv_ds = rsqrtf(ds2+EPS2);
+
+    const float mass   = jpos.mass_h2;
+    const float minvr1 = mass*inv_ds; 
+    const float  invr2 = inv_ds*inv_ds; 
+    const float minvr3 = minvr1*invr2;
+
+    const float factor1 = -1.0;
+    const float factor2 = -3.0;
+    const float factor3 =  2.0;
+
+    // 3*4 + 3 = 15 FLOP, acceleration and potential
+    outVal.accx   += minvr3   * drx;
+    outVal.accy   += minvr3   * dry;
+    outVal.accz   += minvr3   * drz;
+    outVal.pot    += (-1.0f)* minvr1;
+
+
+    //Jerk
+    const float dvx = jVelID.velx - iParticle.velx;
+    const float dvy = jVelID.vely - iParticle.vely;
+    const float dvz = jVelID.velz - iParticle.velz;
+
+    const float drdv = (factor2) * (minvr3*invr2) * (drx*dvx + dry*dvy + drz*dvz);
+    outVal.jrkx    += minvr3 * dvx + drdv * drx;  
+    outVal.jrky    += minvr3 * dvy + drdv * dry;
+    outVal.jrkz    += minvr3 * dvz + drdv * drz;    
+  }
+}
+template<typename posType, typename T, typename T3, typename T4, const bool doNGB, 
+        const bool doNGBList, const int integrationOrder>
+__device__  __forceinline__ void dev_evaluate_gravity_reduce_template_dev2(
+    const int        nj_total, 
+    const int        nj,
+    const int        ni_offset,
+    const int        ni_total,
+    const double4    *pos_j, 
+    const double4    *pos_i,
+    __out double4    *result_i,
+    const double     EPS2_d,
+    const double4    *vel_j,
+    const int        *id_j,                                     
+    const double4    *vel_i,                                     
+    const int        *id_i,
+    __out float2     *dsminNNB,
+    __out int        *ngb_count_i,
+    __out int        *ngb_list,
+    const  double4   *acc_i_in,   
+    const  double4   *acc_j)
+{
+  const int tx  = threadIdx.x;
+  const int ty  = threadIdx.y;
+  const int bx  =  blockIdx.x;
+  const int Dim =  blockDim.x*blockDim.y;
+
+//   __shared__ particlePosMass<posType,T>  shared_posx[256];
+//   __shared__ particleVelID<T>            shared_velid[256];
+//   __shared__ particleAcc<T>              shared_jacc[256]; 
+
+  extern __shared__ char* shared_mem[];  
+  particlePosMass<posType,T> *shared_posx  = ( particlePosMass<posType,T>*)&shared_mem[0];
+  particleVelID<T>           *shared_velid = ( particleVelID<T>*)&shared_posx[Dim];
+
+  int local_ngb_list[NGB_PB + 1];
+  int n_ngb = 0;
+
+  const T EPS2 = (T)EPS2_d;
+  
+  particle<posType, T> iParticle;
+
+  iParticle.setPosMass(pos_i[tx+ni_offset]);
+  iParticle.setVel    (vel_i[tx+ni_offset]);
+  iParticle.pID  =      id_i[tx+ni_offset];
+
+  const T LARGEnum = 1.0e10f;
+
+  devForce2<T, T4, doNGB> out2;
+
+  int tile       = 0;
+  int ni         = bx * (nj*blockDim.y) + nj*ty;
+  const int offy = blockDim.x*ty;
+  for (int i = ni; i < ni+nj; i += blockDim.x)
+  {
+    const int addr = offy + tx;
+
+    if (i + tx < nj_total) {
+      shared_posx [addr].setPosMass(pos_j[i + tx]);
+      
+      if(integrationOrder > GRAPE5)
+      {
+        shared_velid[addr].setVel (vel_j[i + tx]);
+        shared_velid[addr].set_pID( id_j[i + tx]);
+      }
+    } else {
+      shared_posx [addr].setPosMass(LARGEnum,LARGEnum,LARGEnum,0);  
+      if(integrationOrder > GRAPE5)
+      {
+        shared_velid[addr].setVel    (0.0,0.0,0.0);
+        shared_velid[addr].set_pID   (-1);
+      }          
+    }
+
+    __syncthreads();
+
+    const int j  = min(nj - tile*blockDim.x, blockDim.x);
+    const int j1 = j & (-32);
+
+#pragma unroll 32
+    for (int k = 0; k < j1; k++) 
+      body_body_interaction2 <devForce2<T, T4, doNGB>, posType,T,  doNGB, doNGBList, integrationOrder>(
+          out2,
+          local_ngb_list, n_ngb,
+          iParticle,
+          shared_posx[offy+k],  shared_velid[offy+k],
+          EPS2);
+
+
+    for (int k = j1; k < j; k++) 
+      body_body_interaction2 <devForce2<T, T4, doNGB>, posType, T,  doNGB, doNGBList, integrationOrder>(
+          out2,
+          local_ngb_list, n_ngb,
+          iParticle,
+          shared_posx[offy+k],  shared_velid[offy+k], 
+          EPS2);
+
+    __syncthreads();
+
+    tile++;
+  } //end while
+
+
+#if 1
+  //Reduce acceleration and jerk. We know that this has enough
+  //space to do in shmem because of design of shmem allocation
+  T4 *shared_acc   = (T4*)&shared_posx[0];
+  T4 *shared_jrk   = (T4*)&shared_acc[Dim];
+ 
+  const int addr   = offy + tx;
+  shared_acc[addr] = out2.storeAcc();
+
+  if(integrationOrder > GRAPE5)
+  {
+    shared_jrk[addr] = out2.storeJrk();  
+  }
+
+  __syncthreads();
+
+  if (ty == 0)
+  {
+    for (int i = blockDim.x; i < Dim; i += blockDim.x)
+    {
+      out2.accx += shared_acc[i + tx].x;
+      out2.accy += shared_acc[i + tx].y;
+      out2.accz += shared_acc[i + tx].z;
+      out2.pot  += shared_acc[i + tx].w;
+      
+      if(integrationOrder > GRAPE5)
+      {
+        out2.jrkx += shared_jrk[i + tx].x;
+        out2.jrky += shared_jrk[i + tx].y;
+        out2.jrkz += shared_jrk[i + tx].z;
+      }
+    }
+  }
+  __syncthreads();
+#endif
+
+  //Reduce neighbours info
+  int    *shared_ngb = (int*)&shared_posx[Dim];
+  int    *shared_ofs = (int*)&shared_ngb[Dim];
+
+#if 1
+  if(doNGB || doNGBList)
+  {
+    int    *shared_nid = (int*)&shared_ofs[Dim];
+    float  *shared_ds  = (float*)&shared_nid[Dim];
+
+    shared_ngb[addr] = n_ngb;
+    shared_ofs[addr] = 0;
+
+    shared_ds [addr] = out2.ds2min;
+    shared_nid[addr] = out2.nnb;
+
+    __syncthreads();
+
+    if (ty == 0)
+    {
+      for (int i = blockDim.x; i < Dim; i += blockDim.x)
+      {
+        const int addr2 = i + tx;
+
+        if(doNGB)
+        {
+          if(shared_ds [addr2]  < out2.ds2min) 
+          {
+            out2.nnb    = shared_nid[addr2];
+            out2.ds2min = shared_ds [addr2];
+          }       
+        }
+        
+        if(doNGBList)
+        {
+          shared_ofs[addr2] = min(n_ngb, NGB_PB);
+          n_ngb           += shared_ngb[addr2];
+        }
+      }
+
+      if(doNGBList)
+        n_ngb  = min(n_ngb, NGB_PB);
+    }
+    __syncthreads();
+  }
+#endif //NGB info
+
+  int ngbListStart = 0;
+
+  double4 *acc_i = &result_i[0];
+  double4 *jrk_i = &result_i[ni_total];
+  double4 *snp_i = &result_i[ni_total*2];
+
+
+// if(threadIdx.x > 256)
+  if (ty == 0) 
+  {
+#if 0 //Atomic section
+    int *atomicVal  = ngb_count_i;
+    float *waitList = (float*)&shared_posx;
+    if(threadIdx.x == 0)
+    {
+      int res          = atomicExch(&atomicVal[0], 1); //If the old value (res) is 0 we can go otherwise sleep
+      int waitCounter  = 0;
+      while(res != 0)
+      {
+        //Sleep
+        for(int i=0; i < (1024); i++)
+        {
+          waitCounter += 1;
+        }
+        //Test again
+        waitList[0] = (float)waitCounter;
+        res = atomicExch(&atomicVal[0], 1); 
+      }
+    }
+    __syncthreads();
+
+    //Convert results to double and write    
+    double4 temp = out2.storeAccD4();
+    double4 jrk = out2.storeJrkD4();
+    acc_i[   tx+ni_offset].x   += temp.x;
+    acc_i[   tx+ni_offset].y   += temp.y;
+    acc_i[   tx+ni_offset].z   += temp.z;
+    acc_i[   tx+ni_offset].w   += temp.w;
+
+    jrk_i[   tx+ni_offset].x   += jrk.x;
+    jrk_i[   tx+ni_offset].y   += jrk.y;
+    jrk_i[   tx+ni_offset].z   += jrk.z;
+    
+    if(doNGB)
+    {
+      union
+      {
+        double x;
+        float2 y;
+      } temp2; 
+      temp2.y = dsminNNB[tx+ni_offset];
+      if(out2.ds2min <  temp2.y.y)
+      {
+        temp2.y.y = out2.ds2min;
+        temp2.y.x = __int_as_float(out2.nnb);
+
+        dsminNNB[tx+ni_offset] = temp2.y;
+
+      }
+    }
+    if(doNGBList)
+    {
+      ngbListStart = ngb_count_i[tx+ni_offset];
+      ngb_count_i[tx+ni_offset] += n_ngb;
+    }
+
+
+    if(threadIdx.x == 0)
+    {
+      atomicExch(&atomicVal[0], 0); //Release the lock
+    }
+    
+#else
+    double4 temp = out2.storeAccD4();
+
+    atomicAdd(&acc_i[tx+ni_offset].x, temp.x);
+    atomicAdd(&acc_i[tx+ni_offset].y, temp.y);
+    atomicAdd(&acc_i[tx+ni_offset].z, temp.z);
+    atomicAdd(&acc_i[tx+ni_offset].w, temp.w);
+
+    if(integrationOrder > GRAPE5)
+    {
+      double4 jrk  = out2.storeJrkD4();
+      atomicAdd(&jrk_i[tx+ni_offset].x, jrk.x);
+      atomicAdd(&jrk_i[tx+ni_offset].y, jrk.y);
+      atomicAdd(&jrk_i[tx+ni_offset].z, jrk.z);
+
+      if(integrationOrder > FOURTH)
+      {
+        double4 snp  = out2.storeSnpD4();
+        atomicAdd(&snp_i[tx+ni_offset].x, snp.x);
+        atomicAdd(&snp_i[tx+ni_offset].y, snp.y);
+        atomicAdd(&snp_i[tx+ni_offset].z, snp.z);
+      }
+    }
+
+    if(doNGB)
+    {
+      union
+      {
+        double x;
+        float2 y;
+      } temp2; 
+
+      temp2.y.y = out2.ds2min;
+      temp2.y.x = __int_as_float(out2.nnb);
+
+      atomicMin((double*)&dsminNNB[tx+ni_offset], temp2.x);
+    }
+    //Prefix summing for neighbour list
+    if(doNGBList)
+    {
+      ngbListStart = atomicAdd(&ngb_count_i[tx+ni_offset],n_ngb);
+    }
+#endif
+  } //ty == 0
+
+
+
+  //Write the neighbour list, this blocks start-offset = ngbListStart
+  if(doNGBList)
+  {
+    //Share ngbListStart with other threads in the block
+    const int yBlockOffset = shared_ofs[addr];
+    __syncthreads();
+    if(ty == 0)
+    {
+      shared_ofs[threadIdx.x] = ngbListStart;
+    }
+    __syncthreads();
+    ngbListStart    = shared_ofs[threadIdx.x];
+
+
+    int startList   = (ni_offset + tx)  * NGB_PB;
+    int prefixSum   = ngbListStart + yBlockOffset; //this blocks offset + y-block offset
+    int startWrite  = startList    + prefixSum; 
+
+    if(prefixSum + shared_ngb[addr] < NGB_PB) //Only write if we don't overflow
+    {
+      for (int i = 0; i < shared_ngb[addr]; i++) 
+      {
+         ngb_list[startWrite + i] = local_ngb_list[i];
+      }
+    }
+  }//doNGBList
+}
+
+#if 0
 template<typename posType, typename T, typename T4, const bool doNGB, 
         const bool doNGBList, const int integrationOrder>
 __device__ __forceinline__ void dev_evaluate_gravity_reduce_template_dev(
@@ -1827,96 +2843,268 @@ __device__ __forceinline__ void dev_evaluate_gravity_reduce_template_dev(
   }//doNGBList
 }
 #endif
-
-extern "C" __global__ void
-// __launch_bounds__(NTHREADS)
-dev_evaluate_gravity_reduce_template(
-    const int        nj_total, 
-    const int        nj,
-    const int        ni_offset,
-    const int        ni_total,
-    const double4    *pos_j, 
-    const double4    *pos_i,
-    __out double4    *result_i, 
-    const double     EPS2_d,
-    const double4    *vel_j,
-    const int        *id_j,                                     
-    const double4    *vel_i,                                     
-    const int        *id_i,
-    __out float2     *ds2min_i,
-    __out int        *ngb_count_i,
-    __out int        *ngb_list,
-    const double4    *acc_i,   
-    const double4    *acc_j) 
-{
-
-// Nu SIXTH testen en profilen
-
-    //tempalte: type of position, type of acceleration/float/etc, acc type * 4, doNGB, doNGBlist
-//    dev_evaluate_gravity_reduce_template_dev<DSX, double, float4, true, true, FOURTH>(
-    dev_evaluate_gravity_reduce_template_dev<double, double, double4, true, true, SIXTH>(
-
-  //  dev_evaluate_gravity_reduce_template_dev<double, double, double4, true, true, FOURTH>(
-        nj_total, 
-        nj,
-        ni_offset,
-        ni_total,
-        pos_j, 
-        pos_i,
-        result_i, 
-        EPS2_d,
-        vel_j,
-        id_j,                                     
-        vel_i,      
-        id_i,
-        ds2min_i,
-        ngb_count_i,
-        ngb_list,
-        acc_i,
-        acc_j);
-
-}
-
-extern "C" __global__ void
-dev_reset_buffers(
-    const int         ni_total,
-    const bool        doNGB,
-    const bool        doNGBList,
-    const int         integrationOrder,
-    __out double4    *result_i, 
-    __out float2     *ds_i,
-    __out int        *ngb_count_i)
-{
-  const uint bid = blockIdx.y * gridDim.x + blockIdx.x;
-  const uint tid = threadIdx.x;
-  const uint idx = bid * blockDim.x + tid;
+#if 1
+static __device__ uint retirementCountBuildNodes = 0;
+  const int startOffset = blockIdx.x*ni_total*3;
+  acc_i = &result_i [0          + startOffset];
+  jrk_i = &result_i [1*ni_total + startOffset];
+  snp_i = &result_i [2*ni_total + startOffset];
 
 
-  if(idx >= ni_total) return;
+  const int writeIdx = threadIdx.x+ni_offset;
 
-  if(doNGB)
+  if(ty == 0)
   {
-    ds_i[idx] = make_float2(-1, 10e10f);
-  }
-  if(doNGBList)
-  {
-    ngb_count_i[idx] = 0;
+    acc_i[writeIdx] = out2.storeAccD4();
+    jrk_i[writeIdx] = out2.storeJrkD4();
+    snp_i[writeIdx] = out2.storeSnpD4();
   }
 
-  double4 reset = make_double4(0,0,0,0);
-  result_i[idx] = reset; //Acceleration
+  int numBlocks = gridDim.x * gridDim.y;
+  if (numBlocks > 1)
+  {
+    __shared__ bool amLast;
 
-  if(integrationOrder >= FOURTH)
-    result_i[idx+ni_total] = reset; //Jrk
+    // Thread 0 takes a ticket
+    if(threadIdx.x == 0 && ty == 0)
+    {
+      unsigned int ticket = atomicInc(&retirementCountBuildNodes, numBlocks);
+      //unsigned int ticket = retirementCountBuildNodes++;
 
-  if(integrationOrder >= SIXTH)
-    result_i[idx+ni_total*2] = reset; //Snp
+      // If the ticket ID is equal to the number of blocks, we are the last block!
+      amLast = (ticket == numBlocks-1);
+    }
+    __syncthreads();
 
-}
+    if( amLast && ty == 0)
+    {
+        __threadfence();        //Make sure all global memory writes are completed
 
-    
+        acc_i = &result_i[0];
+        jrk_i = &result_i[ni_total];
+        snp_i = &result_i[ni_total*2];
+
+
 #if 0
+        for(int i=1; i < numBlocks; i++)
+        {
+          acc_i[writeIdx].x += acc_i[writeIdx+i*ni_total*3].x;
+          acc_i[writeIdx].y += acc_i[writeIdx+i*ni_total*3].y;
+          acc_i[writeIdx].z += acc_i[writeIdx+i*ni_total*3].z;
+          acc_i[writeIdx].w += acc_i[writeIdx+i*ni_total*3].w;  
 
+          jrk_i[writeIdx].x += jrk_i[writeIdx+i*ni_total*3].x;
+          jrk_i[writeIdx].y += jrk_i[writeIdx+i*ni_total*3].y;
+          jrk_i[writeIdx].z += jrk_i[writeIdx+i*ni_total*3].z;
+
+          snp_i[writeIdx].x += snp_i[writeIdx+i*ni_total*3].x;
+          snp_i[writeIdx].y += snp_i[writeIdx+i*ni_total*3].y;
+          snp_i[writeIdx].z += snp_i[writeIdx+i*ni_total*3].z; 
+        }
+#elif 0
+    asm("//JB2");
+      double4 accBuff[52];
+      double4 jrkBuff[52];
+      double4 snpBuff[52];
+        for(int i=0; i < 52; i++)
+        {
+          accBuff[i] = acc_i[writeIdx+i*ni_total*3];
+        }
+        for(int i=0; i < 52; i++)
+        {
+          jrkBuff[i] = jrk_i[writeIdx+i*ni_total*3];
+        }
+        for(int i=0; i < 52; i++)
+        {
+          snpBuff[i] = snp_i[writeIdx+i*ni_total*3];
+        }
+//         asm("//JB3");
+        double4 temp = accBuff[0];
+       for(int i=1; i < 52; i++)
+        {
+          double4 tempACC2 = accBuff[i];
+          temp.x += tempACC2.x;
+          temp.y += tempACC2.y;
+          temp.z += tempACC2.z;
+          temp.w += tempACC2.w;  
+        }
+       acc_i[writeIdx] = temp;
+
+       double4 temp2 = jrkBuff[0];
+       for(int i=1; i < 52; i++)
+       {
+          double4 tempACC2 = jrkBuff[i];
+          temp2.x += tempACC2.x;
+          temp2.y += tempACC2.y;
+          temp2.z += tempACC2.z;
+          temp2.w += tempACC2.w;  
+       }
+       jrk_i[writeIdx] = temp2;
+       
+       double4 temp3 = snpBuff[0];
+       for(int i=1; i < 52; i++)
+        {
+          double4 tempACC2 = snpBuff[i];
+          temp3.x += tempACC2.x;
+          temp3.y += tempACC2.y;
+          temp3.z += tempACC2.z;
+          temp3.w += tempACC2.w;  
+        }
+        snp_i[writeIdx] = temp3;
+
+    asm("//JBC2");
+#elif 0
+
+
+    asm("//JB1");
+        double4 tempACC = acc_i[writeIdx];
+        double4 tempJRK = jrk_i[writeIdx];
+        double4 tempSNP = snp_i[writeIdx];
+        #pragma unroll 
+//         for(int i=1; i < 52; i++)
+        for(int i=1; i < 52; i++)
+        {
+          double4 tempACC2 = acc_i[writeIdx+i*ni_total*3];
+
+//           printf("Thread: %d reads from: %d \t offset: %d\n", threadIdx.x, writeIdx+i*ni_total*3, ni_offset);
+          tempACC.x += tempACC2.x;
+          tempACC.y += tempACC2.y;
+          tempACC.z += tempACC2.z;
+          tempACC.w += tempACC2.w;  
+        }
+       for(int i=1; i < 52; i++)
+        {
+          double4 tempJRK2 = jrk_i[writeIdx+i*ni_total*3];
+          
+          tempJRK.x += tempJRK2.x;
+          tempJRK.y += tempJRK2.y;
+          tempJRK.z += tempJRK2.z;
+          tempJRK.w += tempJRK2.w;   
+      }
+       for(int i=1; i < 52; i++)
+        {
+          double4 tempSNP2 = snp_i[writeIdx+i*ni_total*3];
+
+          tempSNP.x += tempSNP2.x;
+          tempSNP.y += tempSNP2.y;
+          tempSNP.z += tempSNP2.z;
+          tempSNP.w += tempSNP2.w;     
+        }
+        acc_i[writeIdx] = tempACC;
+        jrk_i[writeIdx] = tempJRK;
+        snp_i[writeIdx] = tempSNP;
+        asm("//JB2");
+
+
+
+#else
+        asm("//JB1");
+//         double4 tempACC = acc_i[writeIdx];
+//         double4 tempJRK = jrk_i[writeIdx];
+//         double4 tempSNP = snp_i[writeIdx];
+//         #pragma unroll 
+// //         for(int i=1; i < 52; i++)
+//         for(int i=1; i < 52; i++)
+//         {
+//           double4 tempACC2 = acc_i[writeIdx+i*ni_total*3];
+//           double4 tempJRK2 = jrk_i[writeIdx+i*ni_total*3];
+//           double4 tempSNP2 = snp_i[writeIdx+i*ni_total*3];
+// 
+// //           printf("Thread: %d reads from: %d \t offset: %d\n", threadIdx.x, writeIdx+i*ni_total*3, ni_offset);
+//           tempACC.x += tempACC2.x;
+//           tempACC.y += tempACC2.y;
+//           tempACC.z += tempACC2.z;
+//           tempACC.w += tempACC2.w;      
+// 
+//           
+//           tempJRK.x += tempJRK2.x;
+//           tempJRK.y += tempJRK2.y;
+//           tempJRK.z += tempJRK2.z;
+//           tempJRK.w += tempJRK2.w;   
+// 
+//           
+//           tempSNP.x += tempSNP2.x;
+//           tempSNP.y += tempSNP2.y;
+//           tempSNP.z += tempSNP2.z;
+//           tempSNP.w += tempSNP2.w;     
+// 
+//         }
+//         acc_i[writeIdx] = tempACC;
+//         jrk_i[writeIdx] = tempJRK;
+//         snp_i[writeIdx] = tempSNP;
+        asm("//JB2");
+#endif
+
+        if(threadIdx.x == 0) retirementCountBuildNodes = 0; 
+    } //if last block
+  } //Numblocks > 1
+#elif 1
+
+  const int startOffset = blockIdx.x*ni_total*3;
+  const int numBlocks   = gridDim.x * gridDim.y;
+  acc_i = &result_i [0          + startOffset];
+  jrk_i = &result_i [1*ni_total + startOffset];
+  snp_i = &result_i [2*ni_total + startOffset];
+
+
+  const int writeIdx = (blockIdx.x) + numBlocks*(threadIdx.x+ni_offset);
+
+  if(ty == 0 && threadIdx.x == 0)
+  {
+    acc_i[writeIdx] = out2.storeAccD4();
+    jrk_i[writeIdx] = out2.storeJrkD4();
+    snp_i[writeIdx] = out2.storeSnpD4();
+  }
+
+  
+  if (numBlocks > 1)
+  {
+    __shared__ bool amLast;
+
+    // Thread 0 takes a ticket
+    if(threadIdx.x == 0 && ty == 0)
+    {
+      unsigned int ticket = atomicInc(&retirementCountBuildNodes, numBlocks);
+      //unsigned int ticket = retirementCountBuildNodes++;
+
+      // If the ticket ID is equal to the number of blocks, we are the last block!
+      amLast = (ticket == numBlocks-1);
+    }
+    __syncthreads();
+
+    if( amLast && ty == 0 && threadIdx.x == 0)
+    {
+        // if(threadIdx.x == 0)
+        // {
+//           printf("\nLAST BLOCK! : %d %d\t%d\toffset: %d\n", blockIdx.x, blockDim.x, threadIdx.x, ni_offset);
+        // }
+        __threadfence();        //Make sure all global memory writes are completed
+
+
+        acc_i = &result_i[0];
+        jrk_i = &result_i[ni_total];
+        snp_i = &result_i[ni_total*2];
+
+        for(int i=1; i < numBlocks; i++)
+        {
+          acc_i[writeIdx].x += acc_i[writeIdx+i*ni_total*3].x;
+          acc_i[writeIdx].y += acc_i[writeIdx+i*ni_total*3].y;
+          acc_i[writeIdx].z += acc_i[writeIdx+i*ni_total*3].z;
+          acc_i[writeIdx].w += acc_i[writeIdx+i*ni_total*3].w;       
+
+          jrk_i[writeIdx].x += jrk_i[writeIdx+i*ni_total*3].x;
+          jrk_i[writeIdx].y += jrk_i[writeIdx+i*ni_total*3].y;
+          jrk_i[writeIdx].z += jrk_i[writeIdx+i*ni_total*3].z;
+
+          snp_i[writeIdx].x += snp_i[writeIdx+i*ni_total*3].x;
+          snp_i[writeIdx].y += snp_i[writeIdx+i*ni_total*3].y;
+          snp_i[writeIdx].z += snp_i[writeIdx+i*ni_total*3].z;
+        }
+
+        if(threadIdx.x == 0) retirementCountBuildNodes = 0; 
+    } //if last block
+  } //Numblocks > 1
+#endif
 /*
 
 template<typename outType, typename T,  const bool doNGB, const bool doNGBList>

@@ -11,10 +11,6 @@ to allocate, load, start functions, etc.
 
 */
 
-
-enum { GRAPE5   = 0, FOURTH, SIXTH, EIGHT};        //0, 1, 2, 3
-enum { DEFAULT  = 0, DOUBLE}; //defualt is 0, double precision 1
-
 #ifdef _OCL_
   #include "include/ocldev.h"
 
@@ -23,6 +19,11 @@ enum { DEFAULT  = 0, DOUBLE}; //defualt is 0, double precision 1
 
   typedef cl_double4 double4;
   typedef cl_double2 double2;
+  
+  typedef struct
+  {
+    double x,y,z;
+  } double3; //No native double3
 
   typedef cl_int4 int4;
 
@@ -118,6 +119,8 @@ namespace sapporo2 {
       int nj_local;                     //Number of particles on this device
       
       int integrationOrder;             //Which integration algorithm do we use. Needed for shmem config
+      int sharedMemPerThread;           //Amount of shared-memory required per thread. Depends on integrator
+                                        //and the precision used
    
     public:
       //Functions
@@ -180,7 +183,7 @@ namespace sapporo2 {
       }
       
       //Load the kernels
-      int loadComputeKernels(const char *filename)
+      int loadComputeKernels(const char *filename, const char *gravityKernelName)
       {
         //Assign context and load the source file
         copyJParticles.setContext(context);
@@ -207,7 +210,7 @@ namespace sapporo2 {
         reduceForces.create("dev_reduce_forces");
         //WORKS evalgravKernelCombined.create("dev_evaluate_gravity_reduce");
         evalgravKernelCombined.create("dev_evaluate_gravity_reduce");
-        evalgravKernelTemplate.create("dev_evaluate_gravity_reduce_template");   
+        evalgravKernelTemplate.create(gravityKernelName);   
         resetDevBuffers.create("dev_reset_buffers");   
        
         return 0;
@@ -272,20 +275,19 @@ namespace sapporo2 {
         //TODO make this pinned memory since the communicate with the host
  
         pos_i.allocate(n_pipes           , false);   
-
+        ngb_count_i.allocate(n_pipes+1,  false);  //Always use it also functions as atomicVal
+        ds_i.allocate(n_pipes,   false); 
 
         if(integrationOrder > GRAPE5)
         {
           vel_i.allocate(n_pipes,  false);   
           id_i.allocate (n_pipes,  false);   
-          ds_i.allocate(n_pipes,   false);        
-          
-          ngb_count_i.allocate(n_pipes,  false);  
-          acc_i.allocate(n_pipes           , false, false);             
+          acc_i.allocate(n_pipes,  false, false);             
         }  
         
         //acc (2nd), jrk (4th), snap (6th), crp (8th order)
-        int niItems = n_pipes + n_pipes*integrationOrder;
+        int niItems = n_pipes + n_pipes*integrationOrder; //+1 for atomic
+//         int niItems = (n_pipes + n_pipes*integrationOrder)*52;
         iParticleResults.allocate(niItems, false, pinned);        
         
 

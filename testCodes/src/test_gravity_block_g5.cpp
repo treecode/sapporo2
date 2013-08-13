@@ -127,7 +127,7 @@ int main(int argc, char *argv[]) {
 			acc+i, jrk+i, pot+i, eps2, h2, NULL);
 
                     
-                        
+jrk[i][0]=jrk[i][1]=jrk[i][2]=0;
     grav.getGravResults(n, npart,
 			id+i, pos+i, vel+i,
 			eps2, h2,

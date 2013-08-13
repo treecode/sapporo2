@@ -125,7 +125,7 @@ protected:
   bool isFirstSend;             //Used to check if this is the first time we sent particles to the
                                 //device, so we have to allocate memory
   int integrationOrder;         //Order of the integrator we use, should be set during open call, default is fourth order
-  int integrationPrecision;     //The precision of the integrator for shared-memory calculation. Default is DEFAULT
+  int integrationPrecision;     //The precision of the integrator for shared-memory calculation. Default is DOUBLESINGLE
   
   bool executedOnHost;
   int CPUThreshold;             //The number of interactions from which point on GPU will be faster than CPU
@@ -145,7 +145,7 @@ public:
     
     
     integrationOrder            = FOURTH;
-    integrationPrecision        = DEFAULT;
+    integrationPrecision        = DOUBLESINGLE;
   };
   ~sapporo() {
      cleanUpDevice();
@@ -158,7 +158,7 @@ public:
     
   //Library interface functions
   int open(std::string kernelFile, int *devices, int nprocs = 1, 
-           int order = FOURTH, int precision = DEFAULT);
+           int order = FOURTH, int precision = DOUBLESINGLE);
   int close();
   int get_n_pipes();
   int set_time(double ti);

@@ -3,8 +3,7 @@
 
 #include <string>
 
-// #define DEBUG_PRINT
-
+//#define DEBUG_PRINT
 
 //Neighbour information
 #define NGB_PB 256
@@ -16,10 +15,54 @@
 #endif
 
 #ifndef NTHREADS
-#define NTHREADS      256
+#define NTHREADS      512
 #endif
 
 
+enum { GRAPE5   = 0, FOURTH, SIXTH, EIGHT};        //0, 1, 2, 3
+enum { FLOAT  = 0, DOUBLESINGLE, DOUBLE}; //defualt is 0, double precision 1
+
+//See kernels.cu for the implementation/configuration of the different
+//integrators and or to add more combinations
+inline const char* get_kernelName(const int integrator,
+                                  const int precision,
+                                  int       &perThreadSM)
+{
+  switch(integrator)
+  {
+    case GRAPE5:
+      if(precision == FLOAT){
+        perThreadSM = sizeof(float4);
+        return "dev_evaluate_gravity_second_float";
+      }else if(precision == DOUBLESINGLE){
+        perThreadSM = sizeof(float4)*2;
+        return "dev_evaluate_gravity_second_DS";}
+    case FOURTH:
+      if(precision == DOUBLESINGLE){
+        perThreadSM = sizeof(float4)*2 + sizeof(float4);
+        return "dev_evaluate_gravity_fourth_DS";
+      }else if(precision == DOUBLE){
+        perThreadSM = sizeof(double4) + sizeof(double4);
+        return "dev_evaluate_gravity_fourth_double";}
+    case SIXTH:
+      if(precision == DOUBLE){
+#ifdef _OCL_
+        perThreadSM = sizeof(double4) + sizeof(double4) + sizeof(double4);
+#else
+        perThreadSM = sizeof(double4) + sizeof(double4) + sizeof(double3);
+#endif
+        return "dev_evaluate_gravity_sixth_double";
+      }
+    default:
+      break;
+  };//switch
+  
+  //Here we come if all switch/case/if combo's failed
+  fprintf(stderr,"ERROR: Unknown combination of integrator type ( %d ) and precision ( %d ) \n", integrator, precision);
+  fprintf(stderr,"ERROR: See 'include/defines.h' for the possible combinations \n");
+  exit(0);
+  return "";
+}
 
 //The next line will enable some extra hand tuned block-size
 //optimizations. But this can be device/resource dependent and 
@@ -31,7 +74,6 @@
 
 //Enable this define to let smallN be handled by CPU
 #define CPU_SUPPORT
-
 
 
 //GPU config configuration

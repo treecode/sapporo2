@@ -80,7 +80,7 @@ int sapporo::open(std::string kernelFile, int *devices,
   integrationPrecision  = precision;
 
   cout << "Integration order used: " << integrationOrder << " (0=GRAPE5, 1=4th, 2=6th, 3=8th)\n";
-  cout << "Integration precision used: " << precision << " (0=DEFAULT, 1=DOUBLE)\n";
+  cout << "Integration precision used: " << precision << " (0=FLOAT, 1 = DOUBLESINGLE, 2=DOUBLE)\n";
 
   dev::context        contextTest;  //Only used to retrieve the number of devices
 
@@ -132,7 +132,8 @@ int sapporo::open(std::string kernelFile, int *devices,
 
     //Assign the device and load the kernels
     sapdevice->assignDevice(dev, integrationOrder);
-    sapdevice->loadComputeKernels(kernelFile.c_str());
+    const char *gravityKernel = get_kernelName(integrationOrder, precision,sapdevice->sharedMemPerThread);
+    sapdevice->loadComputeKernels(kernelFile.c_str(), gravityKernel);
 
     if(tid == 0)
     {
@@ -1476,12 +1477,12 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
 //     int ni_offset = 0;
 
     int argIdx          = 0;
-    bool doNGB          = true;
-    bool doNGBList      = true;
+    int doNGB          = true;
+    int doNGBList      = true;
     
     sapdevice->resetDevBuffers.set_arg<int  >(argIdx++, &ni_total);
-    sapdevice->resetDevBuffers.set_arg<bool >(argIdx++, &doNGB);
-    sapdevice->resetDevBuffers.set_arg<bool >(argIdx++, &doNGBList);
+    sapdevice->resetDevBuffers.set_arg<int >(argIdx++, &doNGB);
+    sapdevice->resetDevBuffers.set_arg<int >(argIdx++, &doNGBList);
     sapdevice->resetDevBuffers.set_arg<int  >(argIdx++, &integrationOrder);
     sapdevice->resetDevBuffers.set_arg<void*>(argIdx++, sapdevice->iParticleResults.ptr());
     sapdevice->resetDevBuffers.set_arg<void*>(argIdx++, sapdevice->ds_i.ptr());
@@ -1489,54 +1490,6 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
     sapdevice->resetDevBuffers.setWork_2D(256, ni_total);
     sapdevice->resetDevBuffers.execute();
     
-//     argIdx = 0;
-//     sapdevice->evalgravKernelTemplate.set_arg<int  >(argIdx++, &nj);      //Total number of j particles
-//     sapdevice->evalgravKernelTemplate.set_arg<int  >(argIdx++, &thisBlockScaled);
-//     sapdevice->evalgravKernelTemplate.set_arg<int  >(argIdx++, &ni_offset);    
-//     sapdevice->evalgravKernelTemplate.set_arg<int  >(argIdx++, &ni_total);   
-// 
-//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->pPos_j.ptr());
-//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->pos_i.ptr());
-//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->iParticleResults.ptr());
-//     sapdevice->evalgravKernelTemplate.set_arg<double>(argIdx++, &EPS2);
-// 
-//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->pVel_j.ptr());
-//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->id_j.ptr());
-//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->vel_i.ptr());
-//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->id_i.ptr());
-//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->ds_i.ptr());     
-//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->ngb_count_i.ptr());
-//     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->ngb_list_i.ptr());
-// //     sapdevice->evalgravKernelTemplate.set_arg<int>(argIdx++, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
-// 
-// 
-//     sapdevice->evalgravKernelTemplate.setWork_threadblock2D(p, q, (sapdevice->get_NBLOCKS()), 1); //Default
-//     sapdevice->evalgravKernelTemplate.execute();
-// 
-//     sapdevice->ngb_count_i.d2h();
-//     sapdevice->ds_i.d2h();
-//     sapdevice->iParticleResults.d2h();
-//     sapdevice->ngb_list_i.d2h();
-//     
-//    
-//     for(int i=0; i < 10; i++)
-//     {
-//       float2 *dsmin = &sapdevice->ds_i[0];
-//       fprintf(stderr,"ATOM: %d\tAcc: %f\t%f\t%f\t%f\tJrk: %f\t%f\t%f\tNNB: %d ( %f )\t %d  \n", 
-//               i,
-//               sapdevice->iParticleResults[i].x,sapdevice->iParticleResults[i].y,
-//               sapdevice->iParticleResults[i].z,sapdevice->iParticleResults[i].w,
-//               sapdevice->iParticleResults[i+ni_total].x,sapdevice->iParticleResults[i+ni_total].y,
-//               sapdevice->iParticleResults[i+ni_total].z,
-//               host_float_as_int(dsmin[i].x), dsmin[i].y,
-//               sapdevice->ngb_count_i[i]
-//              );
-//     }
-//     fprintf(stderr,"====\n");
-//     
-//     
-// //     return 0.0;
-//     
   }
   
 #endif  
@@ -1581,6 +1534,8 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
     int p = ni;
     int q = min(NTHREADS/ni, 32);
     
+//     q = 1;
+    
     //The above is the default and works all the time, we can do some extra device/algorithm
     //specific tunings using the code below.
 
@@ -1593,13 +1548,13 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
     
     if(integrationOrder == GRAPE5)
     {
-      if(integrationPrecision == DEFAULT)
+      if(integrationPrecision == FLOAT)
       {
         //Single Precision
         sharedMemSizeEval    = p*q*(sizeof(float4)); //G5 Single precision
         sharedMemSizeReduce  = (sapdevice->get_NBLOCKS())*(sizeof(float4)); //G5 Single precision
       }
-      if(integrationPrecision == DOUBLE)
+      if(integrationPrecision == DOUBLESINGLE)
       {
         //Double Single Precision      
         sharedMemSizeEval    = p*q*(sizeof(DS4)); //G5 DS precision
@@ -1609,7 +1564,7 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
     
     if(integrationOrder == FOURTH)
     {
-      if(integrationPrecision == DEFAULT)
+      if(integrationPrecision == DOUBLESINGLE)
       {
         #ifdef ENABLE_THREAD_BLOCK_SIZE_OPTIMIZATION
           //This is most optimal one for Fourth order Double-Single. 
@@ -1655,7 +1610,7 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
 
     int argIdx = 0;
     
-    
+
 #if 1
     sapdevice->evalgravKernelTemplate.set_arg<int  >(argIdx++, &nj);      //Total number of j particles
     sapdevice->evalgravKernelTemplate.set_arg<int  >(argIdx++, &thisBlockScaled);
@@ -1676,14 +1631,9 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->ngb_list_i.ptr());
     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->acc_i.ptr());
     sapdevice->evalgravKernelTemplate.set_arg<void*>(argIdx++,  sapdevice->pAcc_j.ptr());
-    
-    sharedMemSizeEval   = p*q*(sizeof(double4) + sizeof(double4)  + sizeof(double4));
-    
-//     if(p == 100) sharedMemSizeEval = 11200;
-//     sharedMemSizeEval = 0;
-//     printf("Size: %d \n", sharedMemSizeEval);
-    sapdevice->evalgravKernelTemplate.set_arg<int>(argIdx++, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
 
+    sharedMemSizeEval = p*q*(sapdevice->sharedMemPerThread);
+    sapdevice->evalgravKernelTemplate.set_arg<int>(argIdx++, NULL, (sharedMemSizeEval)/sizeof(int));  //Shared memory
 
     sapdevice->evalgravKernelTemplate.setWork_threadblock2D(p, q, (sapdevice->get_NBLOCKS()), 1); //Default
     sapdevice->evalgravKernelTemplate.execute();

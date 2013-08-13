@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
   }
   
   int integrationOrder = 1;     //Fourth
-  int integrationPrecision = 0; //Default double-single
+  int integrationPrecision = DOUBLESINGLE; //Default double-single
   int nDevices = 0;
   
  
@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
 			//acc+i, jrk+i,NULL, NULL, pot+i, nnb+i, NULL, true);
 			acc+i, jrk+i,NULL, NULL, pot+i, nnb+i, ds_min+i, true);
 
-#if 1    
+#if 0   
      for(int j=i; j < i+npart; j++){
      printf("calchalf2: %d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%d\t%f\n", j,
             acc[j][0], acc[j][1], acc[j][2],
@@ -159,14 +159,16 @@ int main(int argc, char *argv[]) {
                            nngb[i1],
                            ngb_list);
          fprintf(stderr," ipipe= %d: n_ngb= %d\n", i1 - i, nngb[i1]);
-//          if(i1-i == 255){
-//                  for(int j=0; j < nngb[i1]; j++)
-//                  {
-//                          fprintf(stderr,"%d\t %d\n", j, ngb_list[j]);
-//                  }
-//          }
+//          if(i1-i == 255)
+         {
+                 for(int j=0; j < nngb[i1]; j++)
+                 {
+                         fprintf(stderr,"%d\t %d\n", j, ngb_list[j]);
+                 }
+         }
+         exit(0);
        }
-       exit(0);
+        exit(0);
      }
      }
 #endif     
