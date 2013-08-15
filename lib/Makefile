@@ -43,7 +43,7 @@ NVCCFLAGS += -I$(INCLUDEPATH) -I./
 INTERFACEPATH =./interfaces
 
 CUDAKERNELSPATH = ./CUDAKernels
-CUDAKERNELS = kernels4th.cu  kernels4thDP.cu kernels6thDP.cu kernelsG5DS.cu kernelsG5SP.cu
+CUDAKERNELS = kernels.cu
 
 CUDAPTX = $(CUDAKERNELS:%.cu=$(CUDAKERNELSPATH)/%.ptx)
 
@@ -77,11 +77,7 @@ $(OBJ): $(INCLUDEPATH)/*.h
 
 
 sapporohostclass.o : $(INCLUDEPATH)/sapporohostclass.h $(INCLUDEPATH)/sapdevclass.h $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernels4th.ptx : $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernels4thDP.ptx : $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernels6thDP.ptx : $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernelsG5DS.ptx : $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernelsG5SP.ptx : $(INCLUDEPATH)/defines.h
+$(CUDAKERNELSPATH)/kernels.ptx : $(INCLUDEPATH)/defines.h
 
 libsapporo.a : sapporohostclass.o
 
