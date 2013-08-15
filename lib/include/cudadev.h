@@ -64,11 +64,10 @@ namespace dev {
     }
   }
 
-
+// fprintf(stderr, "CUDA_ERROR_DEINITIALIZED error, continue for testing! \n"); 
 #define CU_SAFE_CALL_NO_SYNC( call ) {					\
     CUresult err = call;						\
     if(err == CUDA_ERROR_DEINITIALIZED){ \
-      fprintf(stderr, "CUDA_ERROR_DEINITIALIZED error, continue for testing! \n"); \
     } \
     else if( CUDA_SUCCESS != err) {						\
       fprintf(stderr, "Cuda driver error <%s> in file '%s' in line %i.\n", \
@@ -676,7 +675,7 @@ namespace dev {
           //Set the maximum number of registers option
           jitOptions[jitOptionCount] = CU_JIT_MAX_REGISTERS;
           int jitRegCount = maxrregcount;
-          jitOptVals[jitOptionCount] = (void *)&jitRegCount;
+          jitOptVals[jitOptionCount] = (void *)jitRegCount;
           jitOptionCount++;
         }
 
@@ -697,7 +696,7 @@ namespace dev {
           jitOptions[jitOptionCount] = CU_JIT_TARGET;
   //         int arch = architecture;
           int arch = maxArchitecture;
-          jitOptVals[jitOptionCount] = (void *)&arch;
+          jitOptVals[jitOptionCount] = (void *)arch;
           jitOptionCount++;
 
           std::cout << "Using compute mode: " << maxArchitecture << "\tSource file: " << KernelFilename << std::endl;

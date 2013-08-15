@@ -288,8 +288,8 @@ void dev_evaluate_gravity_fourth_DS(
     temp2 = dsminNNB[tx+ni_offset];
     if(ds2_min2.x <  temp2.y)
     {
-      temp2.y = ds2_min2.x;
-      temp2.x = ds2_min2.y;
+      temp2.y = ds2_min2.x; //distance
+      temp2.x = ds2_min2.y; //neighbour id
       dsminNNB[tx+ni_offset] = temp2;
     }
 

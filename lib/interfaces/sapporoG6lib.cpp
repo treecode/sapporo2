@@ -10,7 +10,11 @@ sapporo grav;
 
 extern "C" {
 
+#ifdef _OCL_ 
+  const char *kernelFile = "OpenCL/kernels4th.cl";    
+#else
   const char *kernelFile = "CUDA/kernels.ptx";	
+#endif  
   double *dsmin_i;        //Distance of nearest neighbour
   
   double acc_i[3];      //To store the multiplied acc
@@ -23,7 +27,7 @@ extern "C" {
     //Now we have the number of devices and the (possible) devices
     //if how_many is negative we let the Driver decide which
     //devices to use. Otherwise they should be specified in the config file
-    
+
     //Open the GPUs
     int res     = grav.open(kernelFile, list, ndev, FOURTH, DOUBLESINGLE);
     
@@ -63,7 +67,6 @@ extern "C" {
       fprintf(stderr," sapporo2::open - no config file is found \n");
       how_many = 0;
     }
-    
     int res = g6_open_special(how_many, devList);
     
     delete[] devList;

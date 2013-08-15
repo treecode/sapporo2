@@ -811,10 +811,10 @@ int sapporo::read_ngb_list(int cluster_id)
 } //end read_ngb_list
 
 int sapporo::get_ngb_list(int cluster_id,
-                         int ipipe,
-                         int maxlength,
-                         int &nblen,
-                         int nbl[]) {
+                          int ipipe,
+                          int maxlength,
+                          int &nblen,
+                          int nbl[]) {
   //Prevent unused compiler warning    
   cluster_id = cluster_id;  
 

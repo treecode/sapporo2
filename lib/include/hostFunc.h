@@ -321,10 +321,10 @@ void forces_jb(
     const real eps2)   
 {
   
-//   const int max_nj = 65536;
-//   const int max_ni = 65536;
-  const int max_nj  = 50000; //65000 fast, 66000 fast, 65535 slow, 65500 slow, 65750 fast,  66750 fast
-  const int max_ni  = 50000;
+  const int max_nj = 65536;
+  const int max_ni = 65536;
+//   const int max_nj  = 50000; //65000 fast, 66000 fast, 65535 slow, 65500 slow, 65750 fast,  66750 fast
+//   const int max_ni  = 50000;
   
   static std::vector<real> massi(max_ni);
   static std::vector<real> posxi(max_ni);

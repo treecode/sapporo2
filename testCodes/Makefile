@@ -22,10 +22,10 @@ CXXFLAGS  += -I$(INCLUDEPATH) -I./ -I $(SAPPOROPATH)
 
 
 SRCPATH = src
-SRC = test_gravity_block.cpp test_gravity_block_g5.cpp test_gravity_block_6th.cpp test_performance_rangeN.cpp test_performance_blockStep.cpp test_performance_rangeN_6th.cpp test_performance_rangeN_g5.cpp
+SRC = test_gravity_block.cpp test_gravity_block_g5.cpp test_gravity_block_6th.cpp test_performance_rangeN.cpp test_performance_blockStep.cpp test_performance_rangeN_6th.cpp test_performance_rangeN_g5.cpp test_integrator.cpp
 OBJ = $(SRC:%.cpp=%.o)
 
-PROG = test_gravity_block_cuda test_gravity_block_g5_cuda test_gravity_block_6th_cuda test_performance_rangeN_cuda test_performance_blockStep_cuda test_performance_rangeN_6th_cuda test_performance_rangeN_g5_cuda
+PROG = test_gravity_block_cuda test_gravity_block_g5_cuda test_gravity_block_6th_cuda test_performance_rangeN_cuda test_performance_blockStep_cuda test_performance_rangeN_6th_cuda test_performance_rangeN_g5_cuda test_integrator_cuda
 
 all: $(OBJ) $(PROG) kernels
 
@@ -56,6 +56,10 @@ test_performance_rangeN_6th_cuda : test_performance_rangeN_6th.o
 
 test_performance_rangeN_g5_cuda : test_performance_rangeN_g5.o
 	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
+
+test_integrator_cuda : test_integrator.o
+	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
+
 
 %.o: $(SRCPATH)/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
