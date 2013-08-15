@@ -181,6 +181,7 @@ int main(int argc, char *argv[]) {
 
   for (int cycle = 0; cycle < 100; cycle++) {
     int an = 1024;
+    an = min(n, an);
     int n1 = int(an*drand48());
     int n2 = int(an*drand48());
     if (n2 < n1) {

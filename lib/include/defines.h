@@ -3,7 +3,7 @@
 
 #include <string>
 
-//#define DEBUG_PRINT
+// #define DEBUG_PRINT
 
 //Neighbour information
 #define NGB_PB 256

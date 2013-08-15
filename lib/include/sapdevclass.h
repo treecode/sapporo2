@@ -58,9 +58,6 @@ namespace sapporo2 {
       //Kernels
       dev::kernel     copyJParticles;
       dev::kernel     predictKernel;
-      dev::kernel     evalgravKernel;
-      dev::kernel     reduceForces;
-      dev::kernel     evalgravKernelCombined;
       dev::kernel     evalgravKernelTemplate;
       dev::kernel     resetDevBuffers;
       
@@ -188,17 +185,11 @@ namespace sapporo2 {
         //Assign context and load the source file
         copyJParticles.setContext(context);
         predictKernel.setContext(context);
-        evalgravKernel.setContext(context);
-        reduceForces.setContext(context);
-        evalgravKernelCombined.setContext(context);
         evalgravKernelTemplate.setContext(context);
         resetDevBuffers.setContext(context);
 
         copyJParticles.load_source(filename, "");
         predictKernel.load_source(filename, "");
-        evalgravKernel.load_source(filename, "");
-        reduceForces.load_source(filename, "");
-        evalgravKernelCombined.load_source(filename, "");
         evalgravKernelTemplate.load_source(filename, "");
         resetDevBuffers.load_source(filename, "");
   
@@ -206,10 +197,6 @@ namespace sapporo2 {
   
         copyJParticles.create("dev_copy_particles");
         predictKernel.create("dev_predictor");
-        evalgravKernel.create("dev_evaluate_gravity");
-        reduceForces.create("dev_reduce_forces");
-        //WORKS evalgravKernelCombined.create("dev_evaluate_gravity_reduce");
-        evalgravKernelCombined.create("dev_evaluate_gravity_reduce");
         evalgravKernelTemplate.create(gravityKernelName);   
         resetDevBuffers.create("dev_reset_buffers");   
        
@@ -287,7 +274,6 @@ namespace sapporo2 {
         
         //acc (2nd), jrk (4th), snap (6th), crp (8th order)
         int niItems = n_pipes + n_pipes*integrationOrder; //+1 for atomic
-//         int niItems = (n_pipes + n_pipes*integrationOrder)*52;
         iParticleResults.allocate(niItems, false, pinned);        
         
 
