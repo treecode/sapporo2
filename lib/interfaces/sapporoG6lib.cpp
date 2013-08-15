@@ -10,7 +10,7 @@ sapporo grav;
 
 extern "C" {
 
-  const char *kernelFile = "CUDA/kernels4th.ptx";	
+  const char *kernelFile = "CUDA/kernels.ptx";	
   double *dsmin_i;        //Distance of nearest neighbour
   
   double acc_i[3];      //To store the multiplied acc
@@ -25,7 +25,7 @@ extern "C" {
     //devices to use. Otherwise they should be specified in the config file
     
     //Open the GPUs
-    int res     = grav.open(kernelFile, list, ndev, FOURTH);
+    int res     = grav.open(kernelFile, list, ndev, FOURTH, DOUBLESINGLE);
     
 //DP    const char *kernelFile2 = "CUDA/kernels4thDP.ptx";     
 //    int res = grav.open(kernelFile2, list, ndev, FOURTH, 1);
@@ -47,16 +47,16 @@ extern "C" {
     if ((fd = fopen("sapporo2.config", "r"))) {
       char line[256];
       fprintf(stderr, "sapporo2::open - config file is found\n");
-      fgets(line, 256, fd);
-      sscanf(line, "%d", &how_many);
+      if(fgets(line, 256, fd) != NULL)
+        sscanf(line, "%d", &how_many);
 
       //Read the devices we want to use
       if(how_many > 0)
       {
         devList = new int[how_many];
         for (int i = 0; i < how_many; i++) {
-            fgets(line, 256, fd);
-            sscanf(line, "%d", &devList[i]);
+            if(fgets(line, 256, fd) != NULL)
+              sscanf(line, "%d", &devList[i]);
         }
       }
     } else {

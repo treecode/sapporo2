@@ -77,12 +77,12 @@ int main(int argc, char *argv[]) {
     #ifdef _OCL_
       kernelFile.assign("OpenCL/kernels6th.cl");
     #else
-      kernelFile.assign("CUDA/kernels6thDP.ptx");
+      kernelFile.assign("CUDA/kernels.ptx");
     #endif
   }
   
   int integrationOrder = 2;     //6th
-  int integrationPrecision = 0; //Default double-precision
+  int integrationPrecision = 2; //Default double-precision
   int nDevices = 1;
   
  

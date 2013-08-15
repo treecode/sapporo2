@@ -73,13 +73,13 @@ int main(int argc, char *argv[]) {
     #ifdef _OCL_
       kernelFile.assign("OpenCL/kernels4th.cl");
     #else
-      kernelFile.assign("CUDA/kernels4th.ptx");
+      kernelFile.assign("CUDA/kernels.ptx");
     #endif
   }
   
-  int integrationOrder = 1;     //Fourth
-  int integrationPrecision = 0; //Default double-single
-  int nDevices = 1;
+  int integrationOrder     = 1;     //Fourth
+  int integrationPrecision = 1;     //Default double-single
+  int nDevices             = 1;
   
  
   if (argc > 3) integrationOrder        = atoi(argv[3]);

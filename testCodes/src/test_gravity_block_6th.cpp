@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
     #ifdef _OCL_
       kernelFile.assign("OpenCL/kernels6th.cl");
     #else
-      kernelFile.assign("CUDA/kernels6thDP.ptx");
+      kernelFile.assign("CUDA/kernels.ptx");
     #endif
   }
   

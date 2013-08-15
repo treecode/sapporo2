@@ -162,7 +162,7 @@ struct Force{
 }
 
 
-  const char *kernelFile = "CUDA/kernels6thDP.ptx";       
+  const char *kernelFile = "CUDA/kernels.ptx";       
 
   DB3    *pos_i;
   DB3    *vel_i;
@@ -197,7 +197,7 @@ struct Force{
       
     //Open the sapporo library using the specified kernel file, gpu devices and
     //integration order
-    grav.open(kernelFile, list, ndev, SIXTH);
+    grav.open(kernelFile, list, ndev, SIXTH, DOUBLE);
 
     int n_pipes = grav.get_n_pipes();
     //Allocate arrays 
@@ -227,16 +227,16 @@ struct Force{
     if ((fd = fopen("sapporo2.config", "r"))) {
       char line[256];
       fprintf(stderr, "sapporo2::open - config file is found\n");
-      fgets(line, 256, fd);
-      sscanf(line, "%d", &how_many);
+      if(fgets(line, 256, fd) != NULL)
+        sscanf(line, "%d", &how_many);
 
       //Read the devices we want to use
       if(how_many > 0)
       {
         devList = new int[how_many];
         for (int i = 0; i < how_many; i++) {
-            fgets(line, 256, fd);
-            sscanf(line, "%d", &devList[i]);
+            if(fgets(line, 256, fd) != NULL)
+              sscanf(line, "%d", &devList[i]);
         }
       }
     } else {

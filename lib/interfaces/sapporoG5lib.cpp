@@ -30,7 +30,7 @@ int g5_open_special(int ndev, int *list)
 extern "C" {
 
 //   const char *kernelFile = "CUDA/kernelsG5DS.ptx";
-  const char *kernelFile = "CUDA/kernelsG5SP.ptx";        
+  const char *kernelFile = "CUDA/kernels.ptx";        
   
   int nj_to_use = -1;
   double eps_to_use = -1;
@@ -44,7 +44,7 @@ extern "C" {
     //devices to use. Otherwise they should be specified in the config file
     
     //Open the GPUs
-    int res     = grav.open(kernelFile, list, ndev, GRAPE5);
+    int res     = grav.open(kernelFile, list, ndev, GRAPE5, FLOAT);
     
     //Read properties and allocate memory buffers
     int n_pipes = grav.get_n_pipes();
@@ -62,16 +62,16 @@ extern "C" {
     if ((fd = fopen("sapporo2.config", "r"))) {
       char line[256];
       fprintf(stderr, "sapporo2::open - config file is found\n");
-      fgets(line, 256, fd);
-      sscanf(line, "%d", &how_many);
+      if(fgets(line, 256, fd) != NULL)
+        sscanf(line, "%d", &how_many);
 
       //Read the devices we want to use
       if(how_many > 0)
       {
         devList = new int[how_many];
         for (int i = 0; i < how_many; i++) {
-            fgets(line, 256, fd);
-            sscanf(line, "%d", &devList[i]);
+            if(fgets(line, 256, fd) != NULL)
+              sscanf(line, "%d", &devList[i]);
         }
       }
     } else {

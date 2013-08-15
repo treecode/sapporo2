@@ -2,8 +2,12 @@
 
 Sapporo 2 device kernels
 
-Version 1.0
-CUDA DoubleSingle kernels
+Version 1.1
+
+Template based, contains default kernels for:
+GRAPE5 / Second order in single and double-single precision
+GRAPE6 / Fourth order in double-single and double precision including neighbour lists
+Sixt order hermite, in double precision, including neighbour lists
 
 
 

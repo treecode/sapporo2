@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
     #ifdef _OCL_
       kernelFile.assign("OpenCL/kernelsG5SP.cl");
     #else
-      kernelFile.assign("CUDA/kernelsG5SP.ptx");
+      kernelFile.assign("CUDA/kernels.ptx");
     #endif
   }
   

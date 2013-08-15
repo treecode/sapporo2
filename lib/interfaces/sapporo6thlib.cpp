@@ -4,7 +4,7 @@ sapporo grav;
 
 extern "C" {
   
-   const char *kernelFile = "CUDA/kernels6thDP.ptx";   
+   const char *kernelFile = "CUDA/kernels.ptx";   
    
    double *h2_i;
 
@@ -26,7 +26,7 @@ extern "C" {
         
       //Open the sapporo library using the specified kernel file, gpu devices and
       //integration order
-      grav.open(kernelFile, list, ndev, SIXTH);
+      grav.open(kernelFile, list, ndev, SIXTH, DOUBLE);
 
       int n_pipes = grav.get_n_pipes();
       

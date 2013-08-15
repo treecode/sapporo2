@@ -23,44 +23,6 @@ using namespace std;
 #include "sapdevclass.h"
 
 
-#define INT_AS_FLOAT(x) (*((float*)&(x)))
-#define FLOAT_AS_INT(x) (*((int*)&(x)))
-
-//All DS stuff will be taken care on _on the device_
-typedef float2 DS;  // double single;
-
-struct DS4 {
-  DS x, y, z, w;
-  DS4 operator=(DS4 val) {
-    x = val.x;
-    y = val.y;
-    z = val.z;
-    w = val.w;
-    return val;
-  }
-};
-struct DS2 {
-  DS x, y;
-  DS2 operator=(DS2 val) {
-    x = val.x;
-    y = val.y;
-    return val;
-  }
-};
-
-inline DS to_DS(double a) {
-  DS b;
-  b.x = (float)a;
-  b.y = (float)(a - b.x);
-  return b;
-}
-
-inline double to_double(DS a) {
-  double b;
-  b = (double)((double)a.x + (double)a.y);
-  return b;
-}
-
 struct jCopyInfo
 {
   int     count;
