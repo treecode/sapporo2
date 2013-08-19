@@ -54,7 +54,7 @@ test_performance_rangeN_g5_ocl : test_performance_rangeN_g5_ocl.o
 	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
 
 test_integrator_ocl : test_integrator_ocl.o
-        $(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
+	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
 
 %_ocl.o: $(SRCPATH)/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@

@@ -29,10 +29,12 @@ extern "C" {
     //devices to use. Otherwise they should be specified in the config file
 
     //Open the GPUs
-    int res     = grav.open(kernelFile, list, ndev, FOURTH, DOUBLESINGLE);
     
-//DP    const char *kernelFile2 = "CUDA/kernels4thDP.ptx";     
-//    int res = grav.open(kernelFile2, list, ndev, FOURTH, 1);
+    //Double single, default
+    int res     = grav.open(kernelFile, list, ndev, FOURTH, DOUBLESINGLE);
+  
+    //Full double precision
+    //int res = grav.open(kernelFile, list, ndev, FOURTH, DOUBLE);
     
     //Read properties and allocate memory buffers
     int n_pipes = grav.get_n_pipes();

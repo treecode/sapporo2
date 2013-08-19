@@ -827,6 +827,7 @@ int sapporo::get_ngb_list(int cluster_id,
   fprintf(stderr, "get_ngb_list ipipe: %d\n", ipipe);
  #endif
 
+  
 
   bool overflow = false;
   nblen         = 0;
@@ -834,7 +835,8 @@ int sapporo::get_ngb_list(int cluster_id,
     int offset  = NGB_PB*ipipe;
     int len     = deviceList[i]->ngb_count_i[ipipe];
     
-    memcpy(nbl+nblen, &deviceList[i]->ngb_list_i[offset], sizeof(int)*min(len, maxlength - len));
+    int toCopy = min(len, maxlength-nblen);
+    memcpy(nbl+nblen, &deviceList[i]->ngb_list_i[offset], sizeof(int)*toCopy);
     nblen += len;
     if (nblen >= maxlength) {
       overflow = true;
@@ -1126,12 +1128,12 @@ int sapporo::fetch_ngb_list_from_device() {
   cerr << "fetch_ngb_list_from_device\n";
  #endif
 
+
   //Copy only the active ni particles  
   int ni = sapdevice->dev_ni;
-//   sapdevice->ngb_list_i.d2h(ni*NGB_PB, NTHREADS*NGB_PB*(sapdevice->get_NBLOCKS()));
   sapdevice->ngb_count_i.d2h(ni);
   sapdevice->ngb_list_i.d2h(ni*NGB_PB);
-
+ 
   return ni;
 }
 
@@ -1465,7 +1467,7 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
   sapdevice->resetDevBuffers.set_arg<void*>(argIdx++, sapdevice->ngb_count_i.ptr());
   sapdevice->resetDevBuffers.setWork_2D(256, ni_total);
   sapdevice->resetDevBuffers.execute();
-  
+
   int ni = 0;
   //Loop over the ni-particles in jumps equal to the number of threads
   for(int ni_offset = 0; ni_offset < ni_total; ni_offset += NTHREADS)

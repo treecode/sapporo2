@@ -872,9 +872,11 @@ double get_time_test() {
     status = clReleaseEvent(ndrEvent);
 #endif
 
-    //double t0 = get_time_test();                                                                                                                    
-//       oclSafeCall(clFinish(CommandQueue));
-//     fprintf(stderr, "Kernel: %s   TOOK: %lg\tNTHREAD: %d\tNPIPES: %d\tNMULTI: %d \n", KernelName,  get_time_test() - t0, NTHREADS, NPIPES, NBLOCKS_PER_MULTI);  
+     #ifdef TIMING_STATS
+    double t0 = get_time_test();                                                                                                                    
+      oclSafeCall(clFinish(CommandQueue));
+    fprintf(stderr, "Kernel: %s   TOOK: %lg\tNTHREAD: %d\tNMULTI: %d \n", KernelName,  get_time_test() - t0, NTHREADS, NBLOCKS_PER_MULTI);  
+    #endif
 //       oclSafeCall(clFinish(CommandQueue));
 //      fprintf(stderr, "Kernel: %s   TOOK: %lg \n", KernelName,  get_time_test() - t0);
 

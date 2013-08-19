@@ -7,28 +7,36 @@ F90  = ifort
 
 CUDA_TK  = /usr/local/cuda
 
-#OFLAGS = -O3 -g -Wall -fopenmp  -D_OCL_
-#OFLAGS = -O3 -g -Wall -fopenmp
-#OFLAGS = -g -Wall -fopenmp -D_OCL_
 
-#OFLAGS = -g -Wall -fopenmp  DEFAULT
+testRunFlags1=
+testRunFlags2=
+testRunFlags3=
+
+#Check for the defines 
+
+ifdef NTHREADS
+	testRunFlags1="-D NTHREADS=$(NTHREADS)"
+	testRunFlags3="-D TIMING_STATS=1"
+endif
+
+ifdef NBLOCKS_PER_MULTI
+	testRunFlags2="-D NBLOCKS_PER_MULTI=$(NBLOCKS_PER_MULTI)"
+	testRunFlags3="-D TIMING_STATS=1"
+endif
 
 OFLAGS = -g -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
 
-CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include -msse4
+CXXFLAGS = ${testRunFlags} -fPIC $(OFLAGS) -I$(CUDA_TK)/include -msse4
 
-#Below line is used when compiling for testing
-#CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include -D NTHREADS=${curNTHREADS} -D NPIPES=${curNPIPES} -D NBLOCKS_PER_MULTI=${curNMULTI} 
+testRunFlags= $(testRunFlags1) $(testRunFlags2) $(testRunFlags3)
+$(info $(testRunFlags))
 
-
-# NVCCFLAGS = -D_DEBUG -O0 -g -I$(CUDA_SDK)/common/inc -arch=sm_12 --maxrregcount=64  --opencc-options -OPT:Olimit=0 -I$(CUDPP)/cudpp/include
 NVCC      = $(CUDA_TK)/bin/nvcc  
 
 
-NVCCFLAGS = -arch sm_35
+NVCCFLAGS = -arch sm_35 ${testRunFlags}
 #NVCCFLAGS = -arch sm_20 
 #NVCCFLAGS = -arch sm_30
-#NVCCFLAGS = -arch sm_30 -D NTHREADS=${curNTHREADS} -D NPIPES=${curNPIPES} -D NBLOCKS_PER_MULTI=${curNMULTI}
 
 # Use with Mac OS X
 # NVCCFLAGS = -arch sm_12 -Xcompiler="-Duint=unsigned\ int"

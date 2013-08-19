@@ -16,6 +16,7 @@
 
 #ifndef NTHREADS
 #define NTHREADS      512
+
 #endif
 
 
@@ -107,7 +108,7 @@ inline int getBlocksPerSM(int devMajor, int devMinor, std::string deviceName)
 }
 #else  /* NBLOCKS_PER_MULTI */
 
-inline int getBlocksPerSM(int devMajor, int devMinor, string deviceName)
+inline int getBlocksPerSM(int devMajor, int devMinor, std::string deviceName)
 {
   return NBLOCKS_PER_MULTI; //Some Makefile default
 }

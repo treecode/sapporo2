@@ -936,13 +936,13 @@ namespace dev {
 //      fprintf(stderr,"%s took:\t%f\t millisecond\n", KernelName,time);
 
 
-
-//      double t0 = get_time_test();
-//      cuSafeCall(cuCtxSynchronize());
-//      unsigned long execTime = ((get_time_test()-t0))*1000000000;
+#ifdef TIMING_STATS
+     double t0 = get_time_test();
+     cuSafeCall(cuCtxSynchronize());
+     unsigned long execTime = ((get_time_test()-t0))*1000000000;
 //     fprintf(stderr,"Executing on command queue: Kernel: %s\t Took: %d  Threads: %d\n", KernelName, execTime, LocalWork[0]);
-//      fprintf(stderr, "Kernel: %s   TOOK: %lg\tNTHREAD: %d\tNPIPES: %d\tNMULTI: %d \n", KernelName,  get_time_test() - t0, NTHREADS, NPIPES, NBLOCKS_PER_MULTI);
-
+     fprintf(stderr, "Kernel: %s   TOOK: %lg\tNTHREAD: %d\tNMULTI: %d \n", KernelName,  get_time_test() - t0, NTHREADS, NBLOCKS_PER_MULTI);
+#endif
     // double t0 = get_time_test();
   //   cuSafeCall(cuCtxSynchronize());
 //     fprintf(stderr, "Kernel: %s   TOOK: %lg\tNTHREAD: %d\tNPIPES: %d\tNMULTI: %d \n", KernelName,  get_time_test() - t0, NTHREADS, NPIPES, NBLOCKS_PER_MULTI);
