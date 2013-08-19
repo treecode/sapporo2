@@ -689,7 +689,7 @@ namespace dev {
 
 
  	maxArchitecture = computeMode;
-        maxArchitecture = CU_TARGET_COMPUTE_35;
+//         maxArchitecture = CU_TARGET_COMPUTE_35;
 
         //Set the architecture
         {
