@@ -1,5 +1,8 @@
 #include "sapporohostclass.h"
 
+
+#define NMAXTHREADS 256
+
 struct real3 {
   double x, y, z;
 };
@@ -55,12 +58,8 @@ int main(int argc, char *argv[]) {
   }
   
   sapporo grav;
-  
-//   int sapporo::open(std::string kernelFile, int *devices, int nprocs = 1, int order = FOURTH)
-//   grav.open("CUDA/kernels4th.ptx", cluster_id, 1, 1);
+
   int devices[] = {0,1,2,3};
-//  grav.open("CUDA/kernels4thDP.ptx",devices , 1, 1);
-//   grav.open("CUDA/kernels4th.ptx",devices , 1, 1);
   
   std::string kernelFile;
   
@@ -88,13 +87,14 @@ int main(int argc, char *argv[]) {
  
   
   fprintf(stderr, "%s is using: n: %d\tDevices: %d\tIntegrationOrder: %d\tIntegrationPrecision: %d\tFile: %s\n",
-          argv[0], n, nDevices, integrationOrder, integrationPrecision, kernelFile.c_str());
+                  argv[0], n, nDevices, integrationOrder, integrationPrecision, kernelFile.c_str());
   
-//   int sapporo::open(std::string kernelFile, int *devices, int nprocs = 1, int order = FOURTH, int precision = DEFAULT)  
   grav.open(kernelFile.c_str(),devices, nDevices, integrationOrder, integrationPrecision);
     
   
   int ipmax = grav.get_n_pipes();
+  
+  ipmax = min(ipmax, n);
 
   double null3[3] = {0,0,0};
   for (int i = 0; i < n; i++) {
@@ -108,10 +108,10 @@ int main(int argc, char *argv[]) {
   
   double eps2 = 0;
   n1 = 0;
-  n2 = 2*ipmax;
+  n2 = n;
   for (int i = n1; i < n2; i += ipmax) {
     int npart = min(n2 - i, ipmax);
-    
+   
     grav.startGravCalc(n, npart,
 			id + i,
 			pos+i, vel+i,
@@ -122,6 +122,10 @@ int main(int argc, char *argv[]) {
 			eps2, h2,
 			acc+i, jrk+i,NULL, NULL, pot+i, nnb+i, NULL, true);                        
   }
+  
+  //Force ipmax to 256 or 512. For performance of gravity it does not matter
+  //since that is limited by NTHREADS and not NPIPES.
+    ipmax = min(NMAXTHREADS, n);
 
   for (int kk = 0; kk < 1; kk++) {
     fprintf(stderr, "Computing forces on GPU\n");
@@ -157,6 +161,7 @@ int main(int argc, char *argv[]) {
         double tx = get_time();
         for (int i = n1; i < n2; i += ipmax) {
           int npart = min(n2 - i, ipmax);
+                   
     
         int ntest = n;   
           grav.startGravCalc(ntest, npart,

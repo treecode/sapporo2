@@ -816,10 +816,10 @@ double get_time_test() {
       
       event = event; //Make compiler happy
 
-//       #define DEBUG_PRINT
-      #ifdef DEBUG_PRINT
+//       #define DEBUG_PRINT2
+      #ifdef DEBUG_PRINT2
 
-  //     double t0 = get_time_test();
+
       cl_event ndrEvent;
       cl_ulong startTime, endTime;
 
@@ -827,8 +827,6 @@ double get_time_test() {
 					 &GlobalWork[0],
 					 &LocalWork[0],
 					 0, NULL, &ndrEvent), KernelName);
-
-//     double t0 = get_time_test();            
      oclSafeCall(clFinish(CommandQueue));
 
      clGetEventProfilingInfo(ndrEvent, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &startTime, NULL);
@@ -836,7 +834,6 @@ double get_time_test() {
 
      cl_ulong execTime = endTime-startTime;
 
-     //fprintf(stderr,"Executing on command queue: Kernel: %s\t Took: %d\n", KernelName, execTime);
      fprintf(stderr,"Executing on command queue: Kernel: %s\t Took: %d  Threads: %d %d\n", 
 		     KernelName, (int)execTime, (int)LocalWork[0], (int)LocalWork[1]);
      
@@ -847,41 +844,12 @@ double get_time_test() {
                         0, NULL, NULL), KernelName);
      
     #endif
-
-     
-//    fprintf(stderr, "Kernel: %s   TOOK: %lg\tNTHREAD: %d\tNPIPES: %d\tNMULTI: %d \n", KernelName,  get_time_test() - t0, NTHREADS, NPIPES, NBLOCKS_PER_MULTI);          
-     //printf("Kernel took: %d \n", execTime);
-
-#if 0
-     oclSafeCall(clFlush(CommandQueue));
-
-
-    cl_int status = CL_SUCCESS;
-    cl_int eventStatus = CL_QUEUED;
-    while(eventStatus != CL_COMPLETE)
-    {
-        status = clGetEventInfo(
-                        ndrEvent,
-                        CL_EVENT_COMMAND_EXECUTION_STATUS,
-                        sizeof(cl_int),
-                        &eventStatus,
-                        NULL);
-               // oclSafeCall(status);
-        }
-
-    status = clReleaseEvent(ndrEvent);
-#endif
-
-     #ifdef TIMING_STATS
-    double t0 = get_time_test();                                                                                                                    
-      oclSafeCall(clFinish(CommandQueue));
-    fprintf(stderr, "Kernel: %s   TOOK: %lg\tNTHREAD: %d\tNMULTI: %d \n", KernelName,  get_time_test() - t0, NTHREADS, NBLOCKS_PER_MULTI);  
+   
+    #ifdef TIMING_STATS
+      double t0 = get_time_test();                                                                                                                    
+        oclSafeCall(clFinish(CommandQueue));
+      fprintf(stderr, "Kernel: %s   TOOK: %lg\tNTHREAD: %d\tNMULTI: %d \n", KernelName,  get_time_test() - t0, NTHREADS, NBLOCKS_PER_MULTI);  
     #endif
-//       oclSafeCall(clFinish(CommandQueue));
-//      fprintf(stderr, "Kernel: %s   TOOK: %lg \n", KernelName,  get_time_test() - t0);
-
-//       clFinish(CommandQueue);
-//       oclSafeCall(clFinish(CommandQueue));
     }
 
     const cl_kernel&        get_kernel()        const {return Kernel;}

@@ -1494,16 +1494,17 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
     
     //Force ni to be a multiple of the warp/wavefront size. Note we can let ni be a multiple
     //since we ignore all results of non-used (non-requested) particles
+#if 1  //Disable this for block timing. BLOCK_TIMING
     int temp = ni / multipleSize; 
     if((ni % multipleSize) != 0 ) temp++;
     ni = temp * multipleSize;
-
-//     ni = 256;
+#endif
 
     //Dimensions of one thread-block, this can be of the 2D form if there are multiple 
     //y dimensions (q) with an x-dimension of p.
     int p = ni;
-    int q = min(NTHREADS/ni, 32);
+    int q = min(NTHREADS2/ni, 32); //NOTE NTHREADS2 to make 2D blocks for devices with enough resources
+                                   //to allow for 2x NTHREADS block-sizes
     
     //The above is the default and works all the time, we can do some extra device/algorithm
     //specific tunings using the code below.
@@ -1523,9 +1524,11 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
       }
     }
     
+//     q = 1; //Use this when testing optimal thread/block/multi size. Disables 2D thread-blocks . BLOCK_TIMING 
+    
     int sharedMemSizeEval = p*q*(sapdevice->sharedMemPerThread);
     
-//     q = 1; //Use this when testing optimal thread/block/multi size. Disables 2D thread-blocks  
+
 
     //Compute the number of nj particles used per-block (note can have multiple blocks per thread-block in 2D case)
     int nj_scaled       = n_norm(nj, q*(sapdevice->get_NBLOCKS()));

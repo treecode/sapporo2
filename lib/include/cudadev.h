@@ -141,9 +141,9 @@ namespace dev {
           }
           break;
        case 3:        
-                       defaultComputeMode = CU_TARGET_COMPUTE_30;
-              break;
-/*         switch(ccMinor)
+//                        defaultComputeMode = CU_TARGET_COMPUTE_30;
+//               break;
+         switch(ccMinor)
           {
             case 0:
               defaultComputeMode = CU_TARGET_COMPUTE_30;
@@ -151,7 +151,7 @@ namespace dev {
             case 5:
               defaultComputeMode = CU_TARGET_COMPUTE_35;
             break;
-          }      */   
+          }         
       }
       fprintf(stderr, "Compute mode: %d.%d Target: %d \n", ccMajor, ccMinor, defaultComputeMode);
    }

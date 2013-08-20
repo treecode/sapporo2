@@ -15,8 +15,15 @@
 #endif
 
 #ifndef NTHREADS
-#define NTHREADS      512
+#define NTHREADS      256
 
+//Number of threads used to integrate the NTHREADS particles. If these two 
+//are different with NTHREADS << NTHREADS2 you can make 2D thread-blocks
+//when using NTHREADS particles. 
+#define NTHREADS2     512    
+
+#else
+#define NTHREADS2     NTHREADS    
 #endif
 
 
