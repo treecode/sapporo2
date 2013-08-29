@@ -617,7 +617,7 @@ __device__ __forceinline__ void body_body_interaction(
     outVal.accy   += minvr3   * dry;
     outVal.accz   += minvr3   * drz;
     outVal.pot    += (factor1)* minvr1;
-//     outVal.pot    += 1;
+//      outVal.pot    += 1;
 
     if(integrationOrder == GRAPE5) return;
     
@@ -1088,6 +1088,7 @@ __device__  __forceinline__ void dev_evaluate_gravity_reduce_template_dev(
 {\
 CALL( PRECISION1, PRECISION2, PRECISION3, PRECISION4, DONGB, DONGBLIST, ORDER); \
 } \
+
 
 
 //Second order, float precision, no neighbour info

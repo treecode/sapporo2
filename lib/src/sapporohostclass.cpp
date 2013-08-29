@@ -60,6 +60,7 @@ double __inline__ get_time() {
 static sapporo2::device   *sapdevice;
 #pragma omp threadprivate(sapdevice)
 
+int numberOfGPUUsedBySapporo;
 
 //References to the sapdevice per thread
 sapporo2::device **deviceList;
@@ -106,14 +107,16 @@ int sapporo::open(std::string kernelFile, int *devices,
   }
   
   deviceList = new sapporo2::device*[numThread];
+  
+  numberOfGPUUsedBySapporo = numThread;
 
-  omp_set_num_threads(numThread);
-  #pragma omp parallel
+//   omp_set_num_threads(numThread);
+  #pragma omp parallel num_threads(numberOfGPUUsedBySapporo)
   {
     //Create context for each thread
     unsigned int tid      = omp_get_thread_num();
     sapdevice             = new sapporo2::device();
-    
+     
     deviceList[tid] = sapdevice;
 
     //Let the driver try to get a device if nprocs < 0
@@ -211,20 +214,24 @@ int sapporo::open(std::string kernelFile, int *devices,
       
       double tTime = 0;
       CPUThreshold = -1; //Negative to force GPU timings
-      for(int k=1; k < nMaxLoop; k+=nIncrease) //number of i-particles
+      for(int k=0; k < nMaxLoop; k+=nIncrease) //number of i-particles
       {
-        for(int m=1; m < nMaxLoop; m+=nIncrease) //number of j-particles
+        for(int m=0; m < nMaxLoop; m+=nIncrease) //number of j-particles
         {
+          int kk=k, mm=m;
+          if(k==0) kk = 1;
+          if(m==0) mm = 1;
+          
           timingMatrixGPU[m*nMaxTest+k] = 0;
           for(int n=0; n < 10; n++)
           {
             double t0 = get_time();
             set_time(tTime);//set time
-            startGravCalc(m,k,
+            startGravCalc(mm,kk,
                           &sapdevice->id_i[0], pos,
                           vel,acc, acc,tempBuff,
                           1./ nMaxTest, tempBuff, NULL);
-            getGravResults(m,k,
+            getGravResults(mm,kk,
                           &sapdevice->id_i[0], pos,
                           vel, 1./ nMaxTest, NULL,
                           acc, jrk, acc, jrk, tempBuff,
@@ -250,14 +257,17 @@ int sapporo::open(std::string kernelFile, int *devices,
         {
           timingMatrixCPU[m*nMaxTest+k] = 0;
           for(int n=0; n < 10; n++)
-          {          
+          {         
+            int kk=k, mm=m;
+            if(k==0) kk = 1;
+            if(m==0) mm = 1;            
             double t0 = get_time();
             set_time(tTime);//set time
-            startGravCalc(m,k,
+            startGravCalc(mm,kk,
                           &sapdevice->id_i[0], pos,
                           vel,acc, acc,tempBuff,
                           1./ nMaxTest, tempBuff, NULL);
-            getGravResults(m,k,
+            getGravResults(mm,kk,
                           &sapdevice->id_i[0], pos,
                           vel, 1./ nMaxTest, NULL,
                           acc, jrk, acc, jrk, tempBuff,
@@ -349,7 +359,7 @@ int sapporo::open(std::string kernelFile, int *devices,
 
 void sapporo::cleanUpDevice()
 {
-  #pragma omp parallel
+  #pragma omp parallel num_threads(numberOfGPUUsedBySapporo)
   {
     if(sapdevice != NULL)
     {
@@ -367,7 +377,7 @@ void sapporo::cleanUpDevice()
 int sapporo::close() {
   cerr << "Sapporo::close\n";
   isFirstSend = true;
-  #pragma omp parallel
+  #pragma omp parallel num_threads(numberOfGPUUsedBySapporo)
   {
     //TODO call the free memory function
     delete sapdevice;
@@ -549,7 +559,7 @@ void sapporo::increase_jMemory()
   nj_max = temp;  
 
 
-  #pragma omp parallel
+  #pragma omp parallel num_threads(numberOfGPUUsedBySapporo)
   {
     //Compute number of particles to allocate on this device
     int nj_max_local    = nj_max / nCUDAdevices;
@@ -640,7 +650,7 @@ void sapporo::startGravCalc(int    nj,          int ni,
   
 
 
-  #pragma omp parallel
+  #pragma omp parallel num_threads(numberOfGPUUsedBySapporo)
   {
     if (nj_updated) {
       //Get the number of particles set for this device
@@ -714,7 +724,7 @@ int sapporo::getGravResults(int nj, int ni,
     }
   }
 
-  #pragma omp parallel
+  #pragma omp parallel num_threads(numberOfGPUUsedBySapporo)
   {
     //Retrieve data from the devices (in parallel)
     retrieve_i_particle_results(ni);
@@ -790,7 +800,7 @@ int sapporo::read_ngb_list(int cluster_id)
   bool overflow = false;
   int *ni       = new int[omp_get_max_threads()];
 
-  #pragma omp parallel
+  #pragma omp parallel num_threads(numberOfGPUUsedBySapporo)
   {
     //Retrieve data from the devices
     ni[omp_get_thread_num()] = fetch_ngb_list_from_device();
@@ -956,7 +966,7 @@ void sapporo::retrieve_predicted_j_particle(int    addr,        double &mass,
   if(predJOnHost == false)
   {
     //We need to copy the particles back to the host
-    #pragma omp parallel
+    #pragma omp parallel num_threads(numberOfGPUUsedBySapporo)
     {
       //Retrieve data from the devices (in parallel)
       sapdevice->pPos_j.d2h();
@@ -975,7 +985,7 @@ void sapporo::retrieve_predicted_j_particle(int    addr,        double &mass,
   //device information before we can retrieve the data
   int dev           = addr % nCUDAdevices;
   int devAddr       = addr / nCUDAdevices;
-  #pragma omp parallel
+  #pragma omp parallel num_threads(numberOfGPUUsedBySapporo)
   {
     if(omp_get_thread_num() == dev)
     {
@@ -1032,7 +1042,7 @@ void sapporo::retrieve_j_particle_state(int addr,       double &mass,
   if(predJOnHost == false)
   {
     //We need to copy the particles back to the host
-    #pragma omp parallel
+    #pragma omp parallel num_threads(numberOfGPUUsedBySapporo)
     {
       //Retrieve data from the devices (in parallel)
       sapdevice->pos_j.d2h();
@@ -1059,7 +1069,7 @@ void sapporo::retrieve_j_particle_state(int addr,       double &mass,
   //device information before we can retrieve the data
   int dev           = addr % nCUDAdevices;
   int devAddr       = addr / nCUDAdevices;
-  #pragma omp parallel
+  #pragma omp parallel num_threads(numberOfGPUUsedBySapporo)
   {
     if(omp_get_thread_num() == dev)
     {
@@ -1140,7 +1150,7 @@ int sapporo::fetch_ngb_list_from_device() {
 void sapporo::forcePrediction(int nj)
 {
 
-  #pragma omp parallel
+  #pragma omp parallel num_threads(numberOfGPUUsedBySapporo)
   {
     if (nj_updated)
     {

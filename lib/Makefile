@@ -34,7 +34,8 @@ $(info $(testRunFlags))
 NVCC      = $(CUDA_TK)/bin/nvcc  
 
 
-NVCCFLAGS = -arch sm_35 ${testRunFlags}
+#NVCCFLAGS = -arch sm_35 ${testRunFlags}
+NVCCFLAGS = -arch sm_30 ${testRunFlags}
 #NVCCFLAGS = -arch sm_20 
 #NVCCFLAGS = -arch sm_30
 

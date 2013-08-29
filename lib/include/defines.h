@@ -20,7 +20,7 @@
 //Number of threads used to integrate the NTHREADS particles. If these two 
 //are different with NTHREADS << NTHREADS2 you can make 2D thread-blocks
 //when using NTHREADS particles. 
-#define NTHREADS2     512    
+#define NTHREADS2     512
 
 #else
 #define NTHREADS2     NTHREADS    
@@ -120,6 +120,17 @@ inline int getBlocksPerSM(int devMajor, int devMinor, std::string deviceName)
   return NBLOCKS_PER_MULTI; //Some Makefile default
 }
 #endif
+
+
+/*
+  Putting this comment here for lack of better place
+  To reach performance within 5% of SDK example:
+  put __launch_bounds__(1024,1) in the gravity kernel definition
+  NTHREADS and NTHREADS2 set to 1024
+  blocksPerSM (3.5): 2
+  and add "--ftz=true"  to the NVCC flags
+  And launch: ./test_performance_rangeN_g5_cuda 262144 CUDA/kernels.ptx 0 0
+*/
 
 
 
