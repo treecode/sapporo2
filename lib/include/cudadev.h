@@ -110,50 +110,57 @@ namespace dev {
 
     void setDefaultComputeMode()
     {
-      switch(ccMajor)
-      {
-        case 1:
-          switch(ccMinor)
-          {
-            case 0:
-              defaultComputeMode = CU_TARGET_COMPUTE_10;
-              break;
-            case 1:
-              defaultComputeMode = CU_TARGET_COMPUTE_11;
-              break;
-            case 2:
-              defaultComputeMode = CU_TARGET_COMPUTE_12;
-              break;
-            case 3:
-              defaultComputeMode = CU_TARGET_COMPUTE_13;
-              break;
-          }
-          break;
-       case 2:
-          switch(ccMinor)
-          {
-            case 0:
-              defaultComputeMode = CU_TARGET_COMPUTE_20;
-              break;
-            case 1:
-                defaultComputeMode = CU_TARGET_COMPUTE_21;
-              break;
-          }
-          break;
-       case 3:        
-//                        defaultComputeMode = CU_TARGET_COMPUTE_30;
-//               break;
-         switch(ccMinor)
-          {
-            case 0:
-              defaultComputeMode = CU_TARGET_COMPUTE_30;
-              break;
-            case 5:
-              defaultComputeMode = CU_TARGET_COMPUTE_35;
+      #if CUDA_VERSION >= 6000
+        //From 6.0 onwards we can just compute the required mode
+        defaultComputeMode = ccMajor*10 + ccMinor;      
+      #else
+        switch(ccMajor)
+        {
+          case 1:
+            switch(ccMinor)
+            {
+              case 0:
+                defaultComputeMode = CU_TARGET_COMPUTE_10;
+                break;
+              case 1:
+                defaultComputeMode = CU_TARGET_COMPUTE_11;
+                break;
+              case 2:
+                defaultComputeMode = CU_TARGET_COMPUTE_12;
+                break;
+              case 3:
+                defaultComputeMode = CU_TARGET_COMPUTE_13;
+                break;
+            }
             break;
-          }         
-      }
-      fprintf(stderr, "Compute mode: %d.%d Target: %d \n", ccMajor, ccMinor, defaultComputeMode);
+        case 2:
+            switch(ccMinor)
+            {
+              case 0:
+                defaultComputeMode = CU_TARGET_COMPUTE_20;
+                break;
+              case 1:
+                  defaultComputeMode = CU_TARGET_COMPUTE_21;
+                break;
+            }
+            break;
+            
+        #if CUDA_VERSION >= 5000
+          case 3:        
+            switch(ccMinor)
+              {
+                case 0:
+                  defaultComputeMode = CU_TARGET_COMPUTE_30;
+                  break;
+                case 5:
+                  defaultComputeMode = CU_TARGET_COMPUTE_35;
+                break;
+              }        
+        #endif
+      } //switch
+     #endif
+     
+     fprintf(stderr, "Compute mode: %d.%d Target: %d \tCUDA version: %d \n", ccMajor, ccMinor, defaultComputeMode, CUDA_VERSION);
    }
 
     int getDeviceCount() {
@@ -234,7 +241,7 @@ namespace dev {
     const int&  getDefaultComputeMode() const {return defaultComputeMode;}
 
     int        get_numberOfMultiProcessors() const { return multiProcessorCount;}
-    int        get_workGroupSizeMultiple() const   { return workGroupSizeMultiple;}
+    int        get_workGroupSizeMultiple()   const { return workGroupSizeMultiple;}
 
   };
 
@@ -651,9 +658,7 @@ namespace dev {
     }
 
     void load_source(const char *kernel_name, const char *subfolder,
-                     const char *compilerOptions = "",
-                     const int maxrregcount = -1,
-                     const int architecture = CU_TARGET_COMPUTE_13) {
+                     const char *compilerOptions = "") {
 
       assert(ContextFlag);
       assert(!ProgramFlag);
@@ -671,36 +676,30 @@ namespace dev {
 
         int jitOptionCount = 0;
         //use JIT compiling to set the max register number
-        if(maxrregcount > 0) {
-          //Set the maximum number of registers option
-          jitOptions[jitOptionCount] = CU_JIT_MAX_REGISTERS;
-          int jitRegCount = maxrregcount;
-          jitOptVals[jitOptionCount] = (void *)jitRegCount;
-          jitOptionCount++;
+        //         if(maxrregcount > 0) {
+        //           //Set the maximum number of registers option
+        //           jitOptions[jitOptionCount] = CU_JIT_MAX_REGISTERS;
+        //           int jitRegCount = maxrregcount;
+        //           jitOptVals[jitOptionCount] = (void *)jitRegCount;
+        //           jitOptionCount++;
+        //         }
+
+        
+        if(computeMode < CU_TARGET_COMPUTE_20)
+        {
+          fprintf(stderr,"Sapporo2 requires at least a Fermi or newer NVIDIA architecture.\n");
+          exit(-1);
         }
-
-        //Fermi requires at least compute mode 2, so if device is compute mode 2
-        //but the given option is not compute mode 2 (eg constant <= 3) we change
-        //it to compute mode 2.0
-        //TODO should make this a bit more strict,usefull
-        int maxArchitecture = architecture;
-        if(architecture <= 3 && computeMode >= 4)
-          maxArchitecture = 4;
-
-
- 	maxArchitecture = computeMode;
-//         maxArchitecture = CU_TARGET_COMPUTE_35;
 
         //Set the architecture
-        {
-          jitOptions[jitOptionCount] = CU_JIT_TARGET;
-  //         int arch = architecture;
-          int arch = maxArchitecture;
-          jitOptVals[jitOptionCount] = (void *)arch;
-          jitOptionCount++;
-
-          std::cout << "Using compute mode: " << maxArchitecture << "\tSource file: " << KernelFilename << std::endl;
-        }
+        //         {
+        //           jitOptions[jitOptionCount] = CU_JIT_TARGET;
+        //           int arch = computeMode;
+        //           jitOptVals[jitOptionCount] = (void *)arch;
+        //           jitOptionCount++;
+        // 
+        //           std::cout << "Using compute mode: " << computeMode << "\tSource file: " << KernelFilename << std::endl;
+        //         }
 
         std::string ptxSource;
         load_source(KernelFilename, ptxSource);

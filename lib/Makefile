@@ -36,8 +36,7 @@ NVCC      = $(CUDA_TK)/bin/nvcc
 
 #NVCCFLAGS = -arch sm_35 ${testRunFlags}
 NVCCFLAGS = -arch sm_30 ${testRunFlags}
-#NVCCFLAGS = -arch sm_20 
-#NVCCFLAGS = -arch sm_30
+#NVCCFLAGS = -arch sm_20 ${testRunFlags}
 
 # Use with Mac OS X
 # NVCCFLAGS = -arch sm_12 -Xcompiler="-Duint=unsigned\ int"
