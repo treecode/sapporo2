@@ -16,6 +16,11 @@ vel_j.w = eps2
 
 */
 
+#ifdef __INCLUDE_KERNELS__
+#include "kernels.ptxh"
+#endif
+
+
 inline int host_float_as_int(float val)
 {
   union{float f; int i;} u; //__float_as_int

@@ -20,6 +20,11 @@
 #include <vector_types.h>
 #include <builtin_types.h>
 
+#ifdef __INCLUDE_KERNELS__
+extern unsigned char CUDAKernels_kernels_ptx[];
+extern unsigned int CUDAKernels_kernels_ptx_len;
+#endif
+
 namespace dev {
 
 #  define CUT_CHECK_ERROR(errorMessage) {				\
@@ -620,7 +625,27 @@ namespace dev {
 
       if(fp == NULL) {
         fprintf(stderr, "Cannot open source file: %s \n", fileName);
-	assert(false);
+#ifdef __INCLUDE_KERNELS__
+
+        fprintf(stderr, "Checking for compiled in version of file: %s\n", fileName);
+
+        string temp = string(fileName);
+        
+        if(temp.rfind("kernels.ptx") != string::npos)
+        {
+            ptx_source.append((const char*)CUDAKernels_kernels_ptx,CUDAKernels_kernels_ptx_len);
+            ptx_source.append(512, '\0');
+            fprintf(stderr, "Found compiled in version of file: %s\n", fileName);
+            return;
+        }
+        else
+        {
+            fprintf(stderr, "Cannot find compiled in replacement for: %s \n", fileName);
+            assert(false);
+        }
+#else
+        assert(false);
+#endif
       }
 
       fseek(fp, 0, SEEK_END);
@@ -667,6 +692,7 @@ namespace dev {
       //so that the file loaded/specified is in fact a PTX file
       sprintf(KernelFilename, "%s%s", subfolder, kernel_name);
       string temp = string(KernelFilename);
+      
       if(temp.rfind("ptx") != string::npos)
       {
         const unsigned int maxJitOptions = 6;

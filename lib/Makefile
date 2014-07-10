@@ -34,9 +34,10 @@ $(info $(testRunFlags))
 NVCC      = $(CUDA_TK)/bin/nvcc  
 
 
-#NVCCFLAGS = -arch sm_35 ${testRunFlags}
-NVCCFLAGS = -arch sm_30 ${testRunFlags}
-#NVCCFLAGS = -arch sm_20 ${testRunFlags}
+#NVCCFLAGS = -arch sm_35
+NVCCFLAGS ?= -arch sm_30
+#NVCCFLAGS = -arch sm_20
+NVCCFLAGS +=  ${testRunFlags}
 
 # Use with Mac OS X
 # NVCCFLAGS = -arch sm_12 -Xcompiler="-Duint=unsigned\ int"
@@ -76,26 +77,23 @@ $(TARGET): $(LIBOBJ)
 $(CUDAKERNELSPATH)/%.ptx: $(CUDAKERNELSPATH)/%.cu
 	$(NVCC) $(NVCCFLAGS) -ptx $< -o $@
 
+$(INCLUDEPATH)/%.ptxh: $(CUDAKERNELSPATH)/%.ptx
+	xxd -i $< $@
+
 clean:
 	/bin/rm -rf *.o *.ptx *.a 
 	cd $(INTERFACEPATH); /bin/rm -rf *.o; cd ..
 	cd $(CUDAKERNELSPATH); /bin/rm -rf *.ptx; cd ..
-	rm -f *.ptxh include/*.ptxh
+	rm -f *.ptxh $(INCLUDEPATH)/*.ptxh
 
 $(OBJ): $(INCLUDEPATH)/*.h
 
 
-sapporohostclass.o : $(INCLUDEPATH)/sapporohostclass.h $(INCLUDEPATH)/sapdevclass.h $(INCLUDEPATH)/defines.h
+sapporohostclass.o : $(INCLUDEPATH)/kernels.ptxh $(INCLUDEPATH)/sapporohostclass.h $(INCLUDEPATH)/sapdevclass.h $(INCLUDEPATH)/defines.h
 $(CUDAKERNELSPATH)/kernels.ptx : $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernels4thDP.ptx : $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernels6thDP.ptx : $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernelsG5DS.ptx : $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernelsG5SP.ptx : $(INCLUDEPATH)/defines.h
 
 libsapporo.a : sapporohostclass.o
 
-include/%.ptxh: CUDA/%.ptx
-	xxd -i $< $@
 
 
 
