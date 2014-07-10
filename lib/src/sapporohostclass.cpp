@@ -1337,6 +1337,7 @@ void sapporo::predictJParticles_host(int nj)
 }
 void sapporo::evaluate_gravity_host_vector(int ni_total, int nj)
 {
+#ifdef CPU_SUPPORT
   executedOnHost = true;
 
   forces_jb(
@@ -1352,6 +1353,7 @@ void sapporo::evaluate_gravity_host_vector(int ni_total, int nj)
     &sapdevice->iParticleResults[ni_total],
     &sapdevice->ds_i[0],
     EPS2);
+#endif
 }
 
 void sapporo::evaluate_gravity_host(int ni_total, int nj)

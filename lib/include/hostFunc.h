@@ -10,11 +10,15 @@
 // g++ hostEvaluate.cpp -O3 -mavx -I ../include -Wall
 // g++ hostEvaluate.cpp -O3 -msse4 -I ../include -Wall
 
+#ifdef CPU_SUPPORT
 #if 1
   #include "SSE_AVX/SSE/sse.h"
 #else
   #include "SSE_AVX/AVX/avx.h"
 #endif
+#endif
+
+#ifdef CPU_SUPPORT
 
 #if 0
 typedef float real;
@@ -167,6 +171,7 @@ void compute_forces_jb(
     real ds_min[],
     const real seps2)
 {
+
   const vreal eps2(seps2);
   
   #pragma omp parallel for
@@ -457,3 +462,4 @@ void forces_jb(
 }//forces_host
 
 
+#endif

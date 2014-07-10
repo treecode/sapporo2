@@ -26,7 +26,7 @@ endif
 
 OFLAGS = -g -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
 
-CXXFLAGS = ${testRunFlags} -fPIC $(OFLAGS) -I$(CUDA_TK)/include -msse4
+CXXFLAGS += ${testRunFlags} -fPIC $(OFLAGS) -I$(CUDA_TK)/include
 
 testRunFlags= $(testRunFlags1) $(testRunFlags2) $(testRunFlags3)
 $(info $(testRunFlags))
@@ -80,14 +80,22 @@ clean:
 	/bin/rm -rf *.o *.ptx *.a 
 	cd $(INTERFACEPATH); /bin/rm -rf *.o; cd ..
 	cd $(CUDAKERNELSPATH); /bin/rm -rf *.ptx; cd ..
+	rm -f *.ptxh include/*.ptxh
 
 $(OBJ): $(INCLUDEPATH)/*.h
 
 
 sapporohostclass.o : $(INCLUDEPATH)/sapporohostclass.h $(INCLUDEPATH)/sapdevclass.h $(INCLUDEPATH)/defines.h
 $(CUDAKERNELSPATH)/kernels.ptx : $(INCLUDEPATH)/defines.h
+$(CUDAKERNELSPATH)/kernels4thDP.ptx : $(INCLUDEPATH)/defines.h
+$(CUDAKERNELSPATH)/kernels6thDP.ptx : $(INCLUDEPATH)/defines.h
+$(CUDAKERNELSPATH)/kernelsG5DS.ptx : $(INCLUDEPATH)/defines.h
+$(CUDAKERNELSPATH)/kernelsG5SP.ptx : $(INCLUDEPATH)/defines.h
 
 libsapporo.a : sapporohostclass.o
+
+include/%.ptxh: CUDA/%.ptx
+	xxd -i $< $@
 
 
 
