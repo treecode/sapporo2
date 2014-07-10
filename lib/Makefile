@@ -26,7 +26,7 @@ endif
 
 OFLAGS = -g -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
 
-CXXFLAGS = ${testRunFlags} -fPIC $(OFLAGS) -I$(CUDA_TK)/include -msse4
+CXXFLAGS += ${testRunFlags} -fPIC $(OFLAGS) -I$(CUDA_TK)/include
 
 testRunFlags= $(testRunFlags1) $(testRunFlags2) $(testRunFlags3)
 $(info $(testRunFlags))
@@ -34,9 +34,10 @@ $(info $(testRunFlags))
 NVCC      = $(CUDA_TK)/bin/nvcc  
 
 
-#NVCCFLAGS = -arch sm_35 ${testRunFlags}
-NVCCFLAGS = -arch sm_30 ${testRunFlags}
-#NVCCFLAGS = -arch sm_20 ${testRunFlags}
+#NVCCFLAGS = -arch sm_35
+NVCCFLAGS ?= -arch sm_30
+#NVCCFLAGS = -arch sm_20
+NVCCFLAGS +=  ${testRunFlags}
 
 # Use with Mac OS X
 # NVCCFLAGS = -arch sm_12 -Xcompiler="-Duint=unsigned\ int"
@@ -76,18 +77,23 @@ $(TARGET): $(LIBOBJ)
 $(CUDAKERNELSPATH)/%.ptx: $(CUDAKERNELSPATH)/%.cu
 	$(NVCC) $(NVCCFLAGS) -ptx $< -o $@
 
+$(INCLUDEPATH)/%.ptxh: $(CUDAKERNELSPATH)/%.ptx
+	xxd -i $< $@
+
 clean:
 	/bin/rm -rf *.o *.ptx *.a 
 	cd $(INTERFACEPATH); /bin/rm -rf *.o; cd ..
 	cd $(CUDAKERNELSPATH); /bin/rm -rf *.ptx; cd ..
+	rm -f *.ptxh $(INCLUDEPATH)/*.ptxh
 
 $(OBJ): $(INCLUDEPATH)/*.h
 
 
-sapporohostclass.o : $(INCLUDEPATH)/sapporohostclass.h $(INCLUDEPATH)/sapdevclass.h $(INCLUDEPATH)/defines.h
+sapporohostclass.o : $(INCLUDEPATH)/kernels.ptxh $(INCLUDEPATH)/sapporohostclass.h $(INCLUDEPATH)/sapdevclass.h $(INCLUDEPATH)/defines.h
 $(CUDAKERNELSPATH)/kernels.ptx : $(INCLUDEPATH)/defines.h
 
 libsapporo.a : sapporohostclass.o
+
 
 
 

@@ -81,7 +81,7 @@ inline const char* get_kernelName(const int integrator,
 
 
 //Enable this define to let smallN be handled by CPU
-#define CPU_SUPPORT
+//#define CPU_SUPPORT
 
 
 //GPU config configuration

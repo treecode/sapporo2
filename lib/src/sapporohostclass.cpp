@@ -16,6 +16,11 @@ vel_j.w = eps2
 
 */
 
+#ifdef __INCLUDE_KERNELS__
+#include "kernels.ptxh"
+#endif
+
+
 inline int host_float_as_int(float val)
 {
   union{float f; int i;} u; //__float_as_int
@@ -1337,6 +1342,7 @@ void sapporo::predictJParticles_host(int nj)
 }
 void sapporo::evaluate_gravity_host_vector(int ni_total, int nj)
 {
+#ifdef CPU_SUPPORT
   executedOnHost = true;
 
   forces_jb(
@@ -1352,6 +1358,7 @@ void sapporo::evaluate_gravity_host_vector(int ni_total, int nj)
     &sapdevice->iParticleResults[ni_total],
     &sapdevice->ds_i[0],
     EPS2);
+#endif
 }
 
 void sapporo::evaluate_gravity_host(int ni_total, int nj)
