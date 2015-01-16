@@ -25,7 +25,7 @@ ifdef NBLOCKS_PER_MULTI
         testRunFlags3="-D TIMING_STATS=1"
 endif
 
-OFLAGS = -g -Wall -Wextra -Wstrict-aliasing=2 -fopenmp  -D_OCL_
+OFLAGS = -g -Wall -Wextra -Wstrict-aliasing=2 -fopenmp  -D_OCL_  -D__INCLUDE_KERNELS__
 
 CXXFLAGS = ${testRunFlags}  -fPIC $(OFLAGS) -I$(CUDA_TK)/include -msse4 
 
@@ -54,9 +54,13 @@ OBJ = $(SRC:%.cpp=%_ocl.o)
 LIBOBJ = sapporohostclass_ocl.o $(INTERFACEPATH)/sapporoG6lib_ocl.o $(INTERFACEPATH)/sapporoYeblib_ocl.o $(INTERFACEPATH)/sapporoG5lib_ocl.o
 TARGET = libsapporo_ocl.a
 
+OCLKERNELSPATH = ./OpenCLKernels
+OCLKERNELS=kernels4th.cl  kernels4thDP.cl  kernels6th.cl  kernelsG5DS.cl  kernelsG5SP.cl  sharedKernels.cl
+OPENCL_CLH = $(OCLKERNELS:%.cl=$(INCLUDEPATH)/%.clh)
 
-all:	  $(OBJ) $(CUDAPTX) $(TARGET)
-
+all:	  $(OBJ) $(TARGET)
+	echo $(OPENCL_CLH)
+    
 $(TARGET): $(LIBOBJ)
 	ar qv $@ $^        
 
@@ -70,15 +74,26 @@ $(INTERFACEPATH)/%_ocl.o: $(INTERFACEPATH)/%.cpp
 $(CUDAKERNELSPATH)/%.ptx: $(CUDAKERNELSPATH)/%.cu
 	$(NVCC) $(NVCCFLAGS) -ptx $< -o $@
 
+
+$(OCLKERNELSPATH)/%.cle: $(OCLKERNELSPATH)/%.cl
+	rm -f OpenCL
+	ln -s $(OCLKERNELSPATH) OpenCL
+	$(CC) -E -I.  -c - -o $@ < $<
+	rm OpenCL
+    
+$(INCLUDEPATH)/%.clh: $(OCLKERNELSPATH)/%.cle
+	xxd -i $< $@
+    
 clean:
 	/bin/rm -rf *.o *.ptx *.a 
 	cd $(INTERFACEPATH); /bin/rm -rf *.o; cd ..
 	cd $(CUDAKERNELSPATH); /bin/rm -rf *.ptx; cd ..
+	rm -f *.clh $(INCLUDEPATH)/*.clh
 
 $(OBJ): $(INCLUDEPATH)/*.h
 
 
-sapporohostclass_ocl.o : $(INCLUDEPATH)/sapporohostclass.h $(INCLUDEPATH)/sapdevclass.h $(INCLUDEPATH)/defines.h
+sapporohostclass_ocl.o : $(OPENCL_CLH) $(INCLUDEPATH)/sapporohostclass.h $(INCLUDEPATH)/sapdevclass.h $(INCLUDEPATH)/defines.h
 
 libsapporo_ocl.a : sapporohostclass_ocl.o
 

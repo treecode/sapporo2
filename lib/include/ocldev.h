@@ -21,6 +21,21 @@
 #include <CL/cl_platform.h>
 #endif
 
+#ifdef __INCLUDE_KERNELS__
+extern unsigned char OpenCLKernels_kernels4th_cle[];
+extern unsigned int OpenCLKernels_kernels4th_cle_len;
+extern unsigned char OpenCLKernels_kernels4thDP_cle[];
+extern unsigned int OpenCLKernels_kernels4thDP_cle_len;
+extern unsigned char OpenCLKernels_kernels6th_cle[];
+extern unsigned int OpenCLKernels_kernels6th_cle_len;
+extern unsigned char OpenCLKernels_kernelsG5DS_cle[];
+extern unsigned int OpenCLKernels_kernelsG5DS_cle_len;
+extern unsigned char OpenCLKernels_kernelsG5SP_cle[];
+extern unsigned int OpenCLKernels_kernelsG5SP_cle_len;
+extern unsigned char OpenCLKernels_sharedKernels_cle[];
+extern unsigned int OpenCLKernels_sharedKernels_cle_len;
+#endif
+
 namespace dev {
 
   //Function made by NVIDIA
@@ -36,40 +51,65 @@ namespace dev {
     // locals
     FILE* pFileStream = NULL;
     size_t szSourceLength;
-
-    // open the OpenCL source code file
-#ifdef _WIN32   // Windows version
-    if(fopen_s(&pFileStream, cFilename, "rb") != 0)
-      {
-	return NULL;
-      }
-#else           // Linux version
-    pFileStream = fopen(cFilename, "rb");
-    if(pFileStream == 0)
-      {
-	return NULL;
-      }
-#endif
+    char* cSourceString = NULL;
 
     const size_t szPreambleLength = strlen(cPreamble);
-
-    // get the length of the source code
-    fseek(pFileStream, 0, SEEK_END);
-    szSourceLength = ftell(pFileStream);
-    fseek(pFileStream, 0, SEEK_SET);
-
-    // allocate a buffer for the source code string and read it in
-    char* cSourceString = (char *)malloc(szSourceLength + szPreambleLength + 1);
-    memcpy(cSourceString, cPreamble, szPreambleLength);
-    if (fread((cSourceString) + szPreambleLength, szSourceLength, 1, pFileStream) != 1)
+    // open the OpenCL source code file
+    fprintf(stderr, "Opening kernel file: %s\n", cFilename);
+#ifdef _WIN32   // Windows version
+    if(fopen_s(&pFileStream, cFilename, "rb") != 0) }
+#else
+    pFileStream = fopen(cFilename, "rb");
+    if(pFileStream == 0)
+#endif
     {
+        
+#ifdef __INCLUDE_KERNELS__
+        string temp = string(cFilename);
+        char * data = 0;
+        int data_len = 0;
+        if(temp.rfind("kernels4th.cl") != string::npos)
+        { 
+            data = (char *) OpenCLKernels_kernels4th_cle;
+            data_len = OpenCLKernels_kernels4th_cle_len;
+            fprintf(stderr, "Found compiled in version of file: %s\n", cFilename);
+        } else {
+            fprintf(stderr, "Could not find kernel file: %s\n", cFilename);
+            return NULL;
+        }
+        
+        szSourceLength = data_len;
+        
+        cSourceString = (char *)malloc(szSourceLength + szPreambleLength + 1);
+        memcpy(cSourceString, cPreamble, szPreambleLength);
+        memcpy(cSourceString + szPreambleLength, data, data_len);
+#else
+        fprintf(stderr, "Could not find kernel file: %s\n", cFilename);
+        return NULL;
+#endif
+    } else {
+    
+        // get the length of the source code
+        fseek(pFileStream, 0, SEEK_END);
+        szSourceLength = ftell(pFileStream);
+        fseek(pFileStream, 0, SEEK_SET);
+         // allocate a buffer for the source code string and read it in
+        cSourceString = (char *)malloc(szSourceLength + szPreambleLength + 1);
+        memcpy(cSourceString, cPreamble, szPreambleLength);
+        if (fread((cSourceString) + szPreambleLength, szSourceLength, 1, pFileStream) != 1)
+        {
+            fclose(pFileStream);
+            free(cSourceString);
+            return 0;
+        }
+
+        // close the file and return the total length of the combined (preamble + source) string
         fclose(pFileStream);
-        free(cSourceString);
-        return 0;
     }
 
-    // close the file and return the total length of the combined (preamble + source) string
-    fclose(pFileStream);
+
+
+   
     if(szFinalLength != 0)
     {
         *szFinalLength = szSourceLength + szPreambleLength;
