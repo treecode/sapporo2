@@ -17,7 +17,16 @@ vel_j.w = eps2
 */
 
 #ifdef __INCLUDE_KERNELS__
+#ifdef _OCL_
+#include "kernels4th.clh"
+#include "kernels4thDP.clh"
+#include "kernels6th.clh"
+#include "kernelsG5DS.clh"
+#include "kernelsG5SP.clh"
+#include "sharedKernels.clh"
+#else
 #include "kernels.ptxh"
+#endif
 #endif
 
 
