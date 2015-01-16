@@ -26,6 +26,8 @@ endif
 
 OFLAGS = -g -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
 
+#Use below if compiling with CPU_SUPPORT (SSE)
+#CXXFLAGS += ${testRunFlags} -fPIC $(OFLAGS) -I$(CUDA_TK)/include -msse4
 CXXFLAGS += ${testRunFlags} -fPIC $(OFLAGS) -I$(CUDA_TK)/include
 
 testRunFlags= $(testRunFlags1) $(testRunFlags2) $(testRunFlags3)
