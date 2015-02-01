@@ -1101,6 +1101,8 @@ CUDA_GLOBAL ( dev_evaluate_gravity_fourth_DS, DSX, float, float3, float4, true, 
 CUDA_GLOBAL ( dev_evaluate_gravity_fourth_double, double, double, double3, double4, true, true, FOURTH );
 //Sixth order, full native double precision. Including nearest neighbour and neighbour list
 CUDA_GLOBAL ( dev_evaluate_gravity_sixth_double, double, double, double3, double4, true, true, SIXTH);
+//
+CUDA_GLOBAL ( dev_evaluate_gravity_sixth_DS, DSX, float, float3, float4, true, true, SIXTH);
 
 
 extern "C" __global__ void

@@ -28,7 +28,7 @@
 
 
 enum { GRAPE5   = 0, FOURTH, SIXTH, EIGHT};        //0, 1, 2, 3
-enum { FLOAT  = 0, DOUBLESINGLE, DOUBLE}; //defualt is 0, double precision 1
+enum { FLOAT  = 0, DOUBLESINGLE, DOUBLE}; //default is 0, double precision 1
 
 //See kernels.cu for the implementation/configuration of the different
 //integrators and or to add more combinations
@@ -53,7 +53,12 @@ inline const char* get_kernelName(const int integrator,
         perThreadSM = sizeof(double4) + sizeof(double4);
         return "dev_evaluate_gravity_fourth_double";}
     case SIXTH:
-      if(precision == DOUBLE){
+      if(precision == DOUBLESINGLE)
+      {
+          perThreadSM = sizeof(float4)*2 + sizeof(float4) + sizeof(float3);
+	  return "dev_evaluate_gravity_sixth_DS"; 
+      }
+      else if(precision == DOUBLE){
 #ifdef _OCL_
         perThreadSM = sizeof(double4) + sizeof(double4) + sizeof(double4);
 #else
