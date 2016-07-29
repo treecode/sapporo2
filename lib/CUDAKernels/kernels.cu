@@ -893,6 +893,8 @@ __device__  __forceinline__ void dev_evaluate_gravity_reduce_template_dev(
   double4 *snp_i = &result_i[ni_total*2];
 
 
+  if(tx+ni_offset >= ni_total) return;
+
 
   if (ty == 0) 
   {
