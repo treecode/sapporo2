@@ -830,8 +830,8 @@ __device__  __forceinline__ void dev_evaluate_gravity_reduce_template_dev(
         if(integrationOrder > FOURTH)
         {
           out2.snpx += shared_snp[i + tx].x;
-          out2.snpx += shared_snp[i + tx].y;
-          out2.snpx += shared_snp[i + tx].z;            
+          out2.snpy += shared_snp[i + tx].y;
+          out2.snpz += shared_snp[i + tx].z;            
         }
       }
     }
@@ -894,7 +894,6 @@ __device__  __forceinline__ void dev_evaluate_gravity_reduce_template_dev(
 
 
   if(tx+ni_offset >= ni_total) return;
-
 
   if (ty == 0) 
   {
