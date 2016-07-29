@@ -229,8 +229,11 @@ namespace sapporo2 {
         
         bool pinned = true;
         //TODO make the temp buffers pinned memory since the communicate with the host        
-        pos_j_temp.allocate(nj,              false, pinned);       
-        acc_j_temp.allocate(njExtraForPipes, false, pinned); 
+        //29-july-2016, for some reason when using phiGRAPE there is a very small chance that
+        //parts of the data end up as nans when using pinned allocations
+        //For safety take the performance hit and use pagable memory
+        pos_j_temp.allocate(nj,              false, false);       
+        acc_j_temp.allocate(njExtraForPipes, false, false); 
 
         if(integrationOrder > GRAPE5)
         {
