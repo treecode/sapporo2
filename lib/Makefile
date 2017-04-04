@@ -5,7 +5,7 @@ F90  = ifort
 
 .SUFFIXES: .o .cpp .ptx .cu
 
-CUDA_TK  = /usr/local/cuda
+CUDA_TK  ?= /usr/local/cuda
 
 
 testRunFlags1=
