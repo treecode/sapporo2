@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <vector>
 #include <cassert>
-#include <xmmintrin.h>
+//#include <xmmintrin.h>
 
 // g++ src/test_integrator.cpp -I ../lib/ -I ../lib/include/ -I /usr/local/cuda/include/ -lsapporo -L ../lib/ -lcuda -fopenmp -o test_integrator
 

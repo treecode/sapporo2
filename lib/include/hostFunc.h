@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <vector>
 #include <cassert>
-#include <xmmintrin.h>
 
 
 // g++ hostEvaluate.cpp -O3 -mavx -I ../include -Wall
@@ -12,6 +11,7 @@
 
 #ifdef CPU_SUPPORT
 #if 1
+  #include <xmmintrin.h>
   #include "SSE_AVX/SSE/sse.h"
 #else
   #include "SSE_AVX/AVX/avx.h"
