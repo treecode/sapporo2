@@ -110,7 +110,7 @@ namespace dev {
     }
     ~context() {
       cerr << "Delete context! \n";
-      if (ContextFlag) cuCtxDetach(Context);
+      if (ContextFlag) cuCtxDestroy(Context);
     }
 
     void setDefaultComputeMode()
@@ -221,7 +221,10 @@ namespace dev {
       deviceName.assign("");
 
       //Retrieve CC of the selected device
-      cuDeviceComputeCapability(&ccMajor, &ccMinor, Device);
+      cuSafeCall(cuDeviceGetAttribute (&ccMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, Device));
+      cuSafeCall(cuDeviceGetAttribute (&ccMinor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, Device));
+      //
+      //
       fprintf(stderr, "Compute mode: %d.%d \n", ccMajor, ccMinor);
       setDefaultComputeMode();
 
@@ -560,6 +563,7 @@ namespace dev {
     std::vector<size_t> GlobalWork, LocalWork;
 
     std::vector<void*> argumentList;
+    std::vector<void*> argumentListv2;
     std::vector<int> argumentOffset;
 
     bool ContextFlag;
@@ -568,7 +572,6 @@ namespace dev {
     bool WorkFlag;
 
     int sharedMemorySize;
-    int paramOffset;
 
     int WorkGroupSizeMultiple;
     int WorkGroupMaxSize;
@@ -589,7 +592,6 @@ namespace dev {
       WorkFlag    = false;
 
       sharedMemorySize = 0;
-      paramOffset      = 0;
 
       WorkGroupSizeMultiple = 0;
       WorkGroupMaxSize = 0;
@@ -615,6 +617,7 @@ namespace dev {
       WorkGroupMaxSize = 256;
       //In CUDA command_queue is not really used, this is to prevent unused warnings
       CommandQueue = command_queue;
+      argumentListv2.resize(128);
     }
 
 
@@ -783,6 +786,8 @@ namespace dev {
         argumentOffset[arg] = -1;
       }
 
+      argumentListv2[arg] = ptr;
+
       //First check if the call is to allocate shared
       //memory: ptr==NULL and size > 1
       if(ptr == NULL && size > 1)  {
@@ -797,20 +802,6 @@ namespace dev {
 
         return;
       }
-
-      if(argumentOffset[arg] >= 0) {
-        //Already set this parameter once before
-        //so no need to redo all calculations
-        int tempOffset = argumentOffset[arg];
-        ALIGN_UP(tempOffset, __alignof(T));
-        cuSafeCall(cuParamSetv(Kernel, tempOffset, ptr, sizeof(T)));
-      } else {
-        argumentOffset[arg] = paramOffset;
-        ALIGN_UP(paramOffset, __alignof(T));
-        cuSafeCall(cuParamSetv(Kernel, paramOffset, ptr, sizeof(T)));
-        paramOffset += sizeof(T);
-      }
-
     }
 
 
@@ -923,16 +914,6 @@ namespace dev {
       cuCtxSetLimit(CU_LIMIT_PRINTF_FIFO_SIZE, 1024*1024*50);
 
 
-      cuSafeCall(cuParamSetSize(Kernel, paramOffset));
-
-      if(sharedMemorySize > 0)
-        cuSafeCall(cuFuncSetSharedSize(Kernel, sharedMemorySize));
-
-      //Set the thread-block size configuration
-      cuSafeCall(cuFuncSetBlockShape(Kernel,  LocalWork[0],  LocalWork[1],  LocalWork[2]));
-
-
-
 //       #define DEBUG_PRINT
       #ifdef DEBUG_PRINT
         CUevent start,stop;
@@ -943,8 +924,14 @@ namespace dev {
         fprintf(stderr, "Starting kernel: %s and waiting to finish...", KernelName);
       #endif
 
-      cuSafeCall(cuLaunchGridAsync  (Kernel, GlobalWork[0], GlobalWork[1], 0));
-      
+ 
+      cuSafeCall(cuLaunchKernel(Kernel, GlobalWork[0], GlobalWork[1], 1, 
+                                        LocalWork[0], LocalWork[1], LocalWork[2],
+                                        sharedMemorySize,
+                                        0,      //stream
+                                        &argumentListv2[0],
+                                        NULL));
+
       #ifdef DEBUG_PRINT
         double t0 = get_time_test();
         cuSafeCall(cuCtxSynchronize());
