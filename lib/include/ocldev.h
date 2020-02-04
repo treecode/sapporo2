@@ -14,7 +14,7 @@
 
 #include <sys/time.h>
 
-#ifdef __MACOSX__
+#ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
 #include <CL/cl.h>
