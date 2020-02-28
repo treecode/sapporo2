@@ -114,8 +114,10 @@ inline int getBlocksPerSM(int devMajor, int devMinor, std::string deviceName)
       return 2;     
     case 3:     //Kepler
       return 4;
+    case 6:     //Pascal
+      return 16;
     default:    //Future proof...
-      return 4;
+      return 16;
   }  
 }
 #else  /* NBLOCKS_PER_MULTI */
