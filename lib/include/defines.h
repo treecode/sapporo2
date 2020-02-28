@@ -96,7 +96,7 @@ inline const char* get_kernelName(const int integrator,
 inline int getBlocksPerSM(int devMajor, int devMinor, std::string deviceName)
 {
   devMinor = devMinor; //Prevent unused warnings
-  
+ 
   switch(devMajor)
   { 
     case -1:
@@ -114,6 +114,8 @@ inline int getBlocksPerSM(int devMajor, int devMinor, std::string deviceName)
       return 2;     
     case 3:     //Kepler
       return 4;
+    case 6:     //Pascal
+      return 16;
     default:    //Future proof...
       return 4;
   }  

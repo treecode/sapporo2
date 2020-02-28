@@ -20,7 +20,11 @@
 #include <math.h>
 using namespace std;
 
+
+#define HUGE 10e10
+
 #include "sapdevclass.h"
+
 
 
 struct jCopyInfo
