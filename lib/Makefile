@@ -67,11 +67,11 @@ CUDAKERNELS = kernels.cu
 CUDAPTX = $(CUDAKERNELS:%.cu=$(CUDAKERNELSPATH)/%.ptx)
 
 SRCPATH = src
-SRC = sapporohostclass.cpp sapporoG6lib.cpp sapporoYeblib.cpp sapporoG5lib.cpp sapporo6thlib.cpp sapporo_maxwell.cpp
+SRC = sapporohostclass.cpp sapporoG6lib.cpp sapporoYeblib.cpp sapporoG5lib.cpp sapporo6thlib.cpp
 OBJ = $(SRC:%.cpp=%.o)
 
-LIBOBJ = sapporohostclass.o $(INTERFACEPATH)/sapporoG6lib.o $(INTERFACEPATH)/sapporoYeblib.o 
-LIBOBJ += $(INTERFACEPATH)/sapporoG5lib.o $(INTERFACEPATH)/sapporo_maxwell.o
+LIBOBJ = sapporohostclass.o $(INTERFACEPATH)/sapporoG6lib.o $(INTERFACEPATH)/sapporoYeblib.o
+LIBOBJ += $(INTERFACEPATH)/sapporoG5lib.o
 TARGET = libsapporo.a
 
 
