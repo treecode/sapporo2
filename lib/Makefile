@@ -33,11 +33,19 @@ CXXFLAGS += ${testRunFlags} -fPIC $(OFLAGS) -I$(CUDA_TK)/include
 testRunFlags= $(testRunFlags1) $(testRunFlags2) $(testRunFlags3)
 $(info $(testRunFlags))
 
-NVCC      = $(CUDA_TK)/bin/nvcc  
+NVCC      = $(CUDA_TK)/bin/nvcc
 
+
+# Support older CUDA versions out of the box
+NVCCVERSION=$(shell "${NVCC}" --version | grep ^Cuda | sed 's/^.* //g')
+ifeq "${NVCCVERSION}" "V5.5.22"
+	NVCCFLAGS ?= -arch sm_20
+else
+	NVCCFLAGS ?= -arch sm_30
+endif
 
 #NVCCFLAGS = -arch sm_35
-NVCCFLAGS ?= -arch sm_30
+#NVCCFLAGS ?= -arch sm_30
 #NVCCFLAGS = -arch sm_20
 NVCCFLAGS +=  ${testRunFlags}
 
@@ -59,10 +67,11 @@ CUDAKERNELS = kernels.cu
 CUDAPTX = $(CUDAKERNELS:%.cu=$(CUDAKERNELSPATH)/%.ptx)
 
 SRCPATH = src
-SRC = sapporohostclass.cpp sapporoG6lib.cpp sapporoYeblib.cpp sapporoG5lib.cpp sapporo6thlib.cpp
+SRC = sapporohostclass.cpp sapporoG6lib.cpp sapporoYeblib.cpp sapporoG5lib.cpp sapporo6thlib.cpp sapporo_maxwell.cpp
 OBJ = $(SRC:%.cpp=%.o)
 
-LIBOBJ = sapporohostclass.o $(INTERFACEPATH)/sapporoG6lib.o $(INTERFACEPATH)/sapporoYeblib.o $(INTERFACEPATH)/sapporoG5lib.o
+LIBOBJ = sapporohostclass.o $(INTERFACEPATH)/sapporoG6lib.o $(INTERFACEPATH)/sapporoYeblib.o 
+LIBOBJ += $(INTERFACEPATH)/sapporoG5lib.o $(INTERFACEPATH)/sapporo_maxwell.o
 TARGET = libsapporo.a
 
 
