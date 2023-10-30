@@ -710,12 +710,14 @@ namespace dev {
         //           jitOptionCount++;
         //         }
 
-        
+
+#if CUDA_VERSION < 6000
         if(computeMode < CU_TARGET_COMPUTE_20)
         {
           fprintf(stderr,"Sapporo2 requires at least a Fermi or newer NVIDIA architecture.\n");
           exit(-1);
         }
+#endif
 
         //Set the architecture
         //         {

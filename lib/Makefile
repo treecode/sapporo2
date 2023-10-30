@@ -41,7 +41,7 @@ NVCCVERSION=$(shell "${NVCC}" --version | grep ^Cuda | sed 's/^.* //g')
 ifeq "${NVCCVERSION}" "V5.5.22"
 	NVCCFLAGS ?= -arch sm_20
 else
-	NVCCFLAGS ?= -arch sm_30
+	NVCCFLAGS ?= -arch sm_50
 endif
 
 #NVCCFLAGS = -arch sm_35
