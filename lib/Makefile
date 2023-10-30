@@ -41,7 +41,7 @@ NVCCVERSION=$(shell "${NVCC}" --version | grep ^Cuda | sed 's/^.* //g')
 ifeq "${NVCCVERSION}" "V5.5.22"
 	NVCCFLAGS ?= -arch sm_20
 else
-	NVCCFLAGS ?= -arch sm_89
+	NVCCFLAGS ?= -arch sm_50
 endif
 
 #NVCCFLAGS = -arch sm_35
@@ -71,7 +71,7 @@ SRC = sapporohostclass.cpp sapporoG6lib.cpp sapporoYeblib.cpp sapporoG5lib.cpp s
 OBJ = $(SRC:%.cpp=%.o)
 
 LIBOBJ = sapporohostclass.o $(INTERFACEPATH)/sapporoG6lib.o $(INTERFACEPATH)/sapporoYeblib.o
-LIBOBJ += $(INTERFACEPATH)/sapporoG5lib.o
+LIBOBJ += $(INTERFACEPATH)/sapporoG5lib.o $(INTERFACEPATH)/sapporo6thlib.o
 TARGET = libsapporo.a
 
 

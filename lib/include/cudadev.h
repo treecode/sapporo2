@@ -724,12 +724,13 @@ namespace dev {
         //           jitOptionCount++;
         //         }
 
-        
-        if(computeMode < CU_TARGET_COMPUTE_60)
+#if CUDA_VERSION < 6000
+        if(computeMode < CU_TARGET_COMPUTE_20)
         {
           fprintf(stderr,"Sapporo2 requires at least a Pascal (sm_60) or newer NVIDIA architecture.\n");
           exit(-1);
         }
+#endif
 
         //Set the architecture
         //         {

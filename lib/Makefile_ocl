@@ -27,7 +27,7 @@ endif
 
 OFLAGS = -g -Wall -Wextra -Wstrict-aliasing=2 -fopenmp  -D_OCL_  -D__INCLUDE_KERNELS__
 
-CXXFLAGS = ${testRunFlags}  -fPIC $(OFLAGS) -I$(CUDA_TK)/include -msse4 
+CXXFLAGS += ${testRunFlags}  -fPIC $(OFLAGS) -I$(CUDA_TK)/include -msse4
 
 testRunFlags= $(testRunFlags1) $(testRunFlags2) $(testRunFlags3)
 $(info $(testRunFlags))
