@@ -9,7 +9,7 @@ OpenCL Double Single kernels
 */
 
 
-#include "OpenCL/sharedKernels.cl"
+#include "sharedKernels.cl"
 
 
 

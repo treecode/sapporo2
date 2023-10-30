@@ -8,7 +8,7 @@ OpenCL Double Precision
 */
 
 
-#include "OpenCL/sharedKernels.cl"
+#include "sharedKernels.cl"
 
 
 

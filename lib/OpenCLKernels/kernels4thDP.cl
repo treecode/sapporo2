@@ -8,7 +8,7 @@ OpenCL Fourth order Double Precision
 */
 
 
-#include "OpenCL/sharedKernels.cl"
+#include "sharedKernels.cl"
 
 
 __inline void body_body_interaction(inout float2 *ds2_min,

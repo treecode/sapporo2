@@ -8,7 +8,7 @@ CUDA single precisin kernels
 
 */
 
-#include "OpenCL/sharedKernels.cl"
+#include "sharedKernels.cl"
 
 
 __inline void body_body_interaction(inout float4     *acc_i,                                       

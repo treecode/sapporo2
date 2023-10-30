@@ -8,7 +8,7 @@ OpenCL Fourth order DoubleSingle kernels
 */
 
 
-#include "OpenCL/sharedKernels.cl"
+#include "sharedKernels.cl"
 
 #define CAST 1
 

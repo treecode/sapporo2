@@ -1,0 +1,173 @@
+CXX ?= g++
+CC ?= gcc
+
+.PHONY: all
+all: libsapporo.a libsapporo.so emulated_interfaces
+
+
+# Detect CUDA
+ifndef CUDA_TK
+    NVCC := $(shell which nvcc || echo NOTFOUND)
+    ifeq ($(NVCC), NOTFOUND)
+        $(info The nvcc command is not available in your shell.)
+        $(info To compile with CUDA, please install it, set up your environment)
+        $(info according to the CUDA installation instructions, and try again.)
+        $(info )
+    else
+        CUDA_TK := $(dir $(NVCC))..
+        CUDA_AVAILABLE := 1
+    endif
+else
+    NVCC ?= $(CUDA_TK)/bin/nvcc
+    CUDA_AVAILABLE := 1
+endif
+
+
+# Detect OpenCL
+OPENCL_LDFLAGS := -lOpenCL
+ifdef OPENCL
+    OPENCL_LDFLAGS := -L$(OPENCL)/lib -lOpenCL
+endif
+
+OPENCL_STATUS := $(shell echo 'int main() {}' | g++ -x c++ $(OPENCL_LDFLAGS) - && rm a.out || echo NOTFOUND)
+
+ifeq ($(OPENCL_STATUS), NOTFOUND)
+    $(info OpenCL support was not detected on the system.)
+    $(info If it is installed in a non-standard location, then set OPENCL to)
+    $(info the installation prefix and try again.)
+    $(info )
+else
+    OPENCL_AVAILABLE := 1
+endif
+
+
+# Select backend
+ifndef BACKEND
+    ifdef CUDA_AVAILABLE
+        $(info BACKEND not set and CUDA was detected, using CUDA)
+        BACKEND := CUDA
+    else
+        ifdef OPENCL_AVAILABLE
+            $(info BACKEND not set and OpenCL was detected, using OpenCL)
+            BACKEND := OpenCL
+        else
+            $(error BACKEND not set and neither CUDA nor OpenGL was detected.)
+        endif
+    endif
+else
+    ifeq ($(BACKEND), CUDA)
+        ifndef CUDA_AVAILABLE
+            $(error BACKEND set to CUDA but it was not found.)
+        endif
+        $(info Using selected backend CUDA)
+    else
+        ifeq ($(BACKEND), OpenCL)
+            ifndef OPENCL_AVAILABLE
+                $(error BACKEND set to OpenCL but it was not found.)
+            endif
+        else
+            $(error BACKEND set to unknown value "$(BACKEND)", please use CUDA or OpenCL)
+        endif
+        $(info Using selected backend OpenCL)
+    endif
+endif
+$(info )
+
+# Testing/optimisation support
+ifdef NTHREADS
+    CXXFLAGS += -DNTHREADS=$(NTHREADS) -DTIMING_STATS=1
+endif
+
+ifdef NBLOCKS_PER_MULTI
+    CXXFLAGS += -DNBLOCKS_PER_MULTI=$(NBLOCKS_PER_MULTI) -DTIMING_STATS=1
+endif
+
+
+# CUDA kernels
+ifeq ($(BACKEND), CUDA)
+
+INCLUDEPATH += -I$(CUDA_TK)
+LDFLAGS += -lcuda -fopenmp
+
+CUDA_SRC = $(wildcard CUDAKernels/*.cu)
+PTXH = $(CUDA_SRC:CUDAKernels/%.cu=include/%.ptxh)
+NVCCFLAGS += -I./include -I.
+
+.PHONY: kernels
+kernels: $(PTXH)
+
+%.ptx: %.cu
+	$(NVCC) $(NVCCFLAGS) -ptx $< -o $@
+
+include/%.ptxh: CUDAKernels/%.ptx
+	xxd -i $< $@
+
+endif
+
+
+# OpenCL kernels
+ifeq ($(BACKEND), OpenCL)
+
+ifdef OPENCL
+    CXXFLAGS += -I$(OPENCL)/include
+    LDFLAGS += -L$(OPENCL)/lib
+endif
+
+CXXFLAGS += -D_OCL_ -D__INCLUDE_KERNELS__
+LDFLAGS += -lOpenCL -fopenmp
+
+OPENCL_SRC = $(wildcard OpenCLKernels/*.cl)
+CLH = $(OPENCL_SRC:OpenCLKernels/%.cl=include/%.clh)
+
+.PHONY: kernels
+kernels: $(CLH)
+
+%.cle: %.cl
+	$(CC) -E -IOpenCLKernels -o $@ - <$<
+
+include/%.clh: OpenCLKernels/%.cle
+	xxd -i $< $@
+
+endif
+
+
+# Main implementation
+CXX_SRC := $(wildcard src/*.cpp)
+OBJS := $(CXX_SRC:%.cpp=%.o)
+INCLUDEPATH += -Iinclude -I.
+CXXFLAGS += $(INCLUDEPATH) -fPIC -g -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
+
+src/sapporohostclass.o: kernels
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+libsapporo.a: $(OBJS)
+	ar qv $@ $^
+
+libsapporo.so: $(OBJS)
+	$(CXX) -o $@ -shared $^ $(LDFLAGS)
+
+
+# API compatibility libraries
+EMU_SRC := $(wildcard interfaces/*lib.cpp)
+EMU_STATIC_LIBS := $(EMU_SRC:interfaces/%lib.cpp=lib%.a)
+EMU_SHARED_LIBS := $(EMU_SRC:interfaces/%lib.cpp=lib%.so)
+
+.PHONY: emulated_interfaces
+emulated_interfaces: $(EMU_STATIC_LIBS) $(EMU_SHARED_LIBS)
+
+lib%.a: interfaces/%lib.o
+	ar qv $@ $^
+
+lib%.so: interfaces/%lib.o
+	$(CXX) -o $@ -shared $^ -L. -lsapporo $(LDFLAGS)
+
+
+# Clean-up
+.PHONY: clean
+clean:
+	rm -f src/*.o interfaces/*.o *.a *.so
+	rm -f CUDAKernels/*.ptx OpenCLKernels/*.cle
+	rm -f include/*.ptxh include/*.clh
+
