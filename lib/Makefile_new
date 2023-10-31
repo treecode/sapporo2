@@ -86,7 +86,7 @@ endif
 # CUDA kernels
 ifeq ($(BACKEND), CUDA)
 
-INCLUDEPATH += -I$(CUDA_TK)
+INCLUDES = -I$(CUDA_TK)
 LDFLAGS += -lcuda -fopenmp
 
 CUDA_SRC = $(wildcard CUDAKernels/*.cu)
@@ -113,6 +113,7 @@ ifdef OPENCL
     LDFLAGS += -L$(OPENCL)/lib
 endif
 
+INCLUDES =
 CXXFLAGS += -D_OCL_ -D__INCLUDE_KERNELS__
 LDFLAGS += -lOpenCL -fopenmp
 
@@ -134,8 +135,8 @@ endif
 # Main implementation
 CXX_SRC := $(wildcard src/*.cpp)
 OBJS := $(CXX_SRC:%.cpp=%.o)
-INCLUDEPATH += -Iinclude -I.
-CXXFLAGS += $(INCLUDEPATH) -fPIC -g -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
+INCLUDES = -Iinclude -I.
+CXXFLAGS += $(INCLUDES) -fPIC -g -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
 
 src/sapporohostclass.o: kernels
 
