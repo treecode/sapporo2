@@ -90,11 +90,13 @@ INCLUDES = -I$(CUDA_TK)
 LDFLAGS += -lcuda -fopenmp
 
 CUDA_SRC = $(wildcard CUDAKernels/*.cu)
+PTX = $(CUDA_SRC:CUDAKernels/%.cu=CUDAKernels/%.ptx)
+# The .ptxh version seems to be unused
 PTXH = $(CUDA_SRC:CUDAKernels/%.cu=include/%.ptxh)
 NVCCFLAGS += -I./include -I.
 
 .PHONY: kernels
-kernels: $(PTXH)
+kernels: $(PTX) $(PTXH)
 
 %.ptx: %.cu
 	$(NVCC) $(NVCCFLAGS) -ptx $< -o $@
