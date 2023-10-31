@@ -28,7 +28,7 @@ all: $(OBJ) $(PROG) kernels
 
 
 kernels:
-	ln -s $(SAPPOROPATH)/CUDAKernels/ CUDA/
+	rm -f CUDA && ln -s $(SAPPOROPATH)/CUDAKernels CUDA
 
 #$(PROG): $(OBJ)
 #	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -lsapporo
@@ -63,7 +63,7 @@ test_integrator_cuda : test_integrator.o
 
 
 clean:
-	/bin/rm -rf *.o *.ptx *.a $(PROG)
+	/bin/rm -rf *.o *.ptx *.a $(PROG) CUDA
 
 
 $(OBJ): $(SAPPOROPATH)/$(SAPLIB)
