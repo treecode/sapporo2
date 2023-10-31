@@ -55,8 +55,15 @@ inline const char* get_kernelName(const int integrator,
     case SIXTH:
       if(precision == DOUBLESINGLE)
       {
+#ifdef _OCL_
+          fprintf(stderr, "ERROR: Sixth order integrator with double single precision");
+          fprintf(stderr, "ERROR: is not implemented in OpenCL, only in CUDA. Please");
+          fprintf(stderr, "ERROR: file an issue on GitHub if you need this combination.");
+          exit(1);
+#else
           perThreadSM = sizeof(float4)*2 + sizeof(float4) + sizeof(float3);
-	  return "dev_evaluate_gravity_sixth_DS"; 
+#endif
+          return "dev_evaluate_gravity_sixth_DS"; 
       }
       else if(precision == DOUBLE){
 #ifdef _OCL_

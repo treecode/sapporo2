@@ -206,7 +206,7 @@ __device__ __forceinline__  double RSQRT(double val) { return rsqrt(val); }
 // template<>           __device__ __forceinline__  double RSQRT(double val) { return 1.0/sqrt(val); }
 
 
-
+#if __CUDA_ARCH__ < 600
 __device__ double atomicAdd(double* address, double val)
 {
     unsigned long long int* address_as_ull =
@@ -220,6 +220,7 @@ __device__ double atomicAdd(double* address, double val)
     } while (assumed != old);
     return __longlong_as_double(old);
 }
+#endif
 
 
 __device__ __forceinline__ double atomicMin(double *address, double val)
