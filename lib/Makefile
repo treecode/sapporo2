@@ -1,114 +1,177 @@
-CXX = g++
-CC  = gcc
-LD  = g++ 
-F90  = ifort
-
-.SUFFIXES: .o .cpp .ptx .cu
+CXX ?= g++
+CC ?= gcc
 
 CUDA_TK  ?= $(CUDA_HOME)
+.PHONY: all
+all: libsapporo.a libsapporo.so emulated_interfaces
 
 
-testRunFlags1=
-testRunFlags2=
-testRunFlags3=
+# Detect CUDA
+ifndef CUDA_TK
+    NVCC := $(shell which nvcc || echo NOTFOUND)
+    ifeq ($(NVCC), NOTFOUND)
+        $(info The nvcc command is not available in your shell.)
+        $(info To compile with CUDA, please install it, set up your environment)
+        $(info according to the CUDA installation instructions, and try again.)
+        $(info )
+    else
+        CUDA_TK := $(dir $(NVCC))..
+        CUDA_AVAILABLE := 1
+    endif
+else
+    NVCC ?= $(CUDA_TK)/bin/nvcc
+    CUDA_AVAILABLE := 1
+endif
 
-#Check for the defines 
 
+# Detect OpenCL
+OPENCL_LDFLAGS := -lOpenCL
+ifdef OPENCL
+    OPENCL_LDFLAGS := -L$(OPENCL)/lib -lOpenCL
+endif
+
+OPENCL_STATUS := $(shell echo 'int main() {}' | g++ -x c++ $(OPENCL_LDFLAGS) - && rm a.out || echo NOTFOUND)
+
+ifeq ($(OPENCL_STATUS), NOTFOUND)
+    $(info OpenCL support was not detected on the system.)
+    $(info If it is installed in a non-standard location, then set OPENCL to)
+    $(info the installation prefix and try again.)
+    $(info )
+else
+    OPENCL_AVAILABLE := 1
+endif
+
+
+# Select backend
+ifndef BACKEND
+    ifdef CUDA_AVAILABLE
+        $(info BACKEND not set and CUDA was detected, using CUDA)
+        BACKEND := CUDA
+    else
+        ifdef OPENCL_AVAILABLE
+            $(info BACKEND not set and OpenCL was detected, using OpenCL)
+            BACKEND := OpenCL
+        else
+            $(error BACKEND not set and neither CUDA nor OpenGL was detected.)
+        endif
+    endif
+else
+    ifeq ($(BACKEND), CUDA)
+        ifndef CUDA_AVAILABLE
+            $(error BACKEND set to CUDA but it was not found.)
+        endif
+        $(info Using selected backend CUDA)
+    else
+        ifeq ($(BACKEND), OpenCL)
+            ifndef OPENCL_AVAILABLE
+                $(error BACKEND set to OpenCL but it was not found.)
+            endif
+        else
+            $(error BACKEND set to unknown value "$(BACKEND)", please use CUDA or OpenCL)
+        endif
+        $(info Using selected backend OpenCL)
+    endif
+endif
+$(info )
+
+# Testing/optimisation support
 ifdef NTHREADS
-	testRunFlags1="-D NTHREADS=$(NTHREADS)"
-	testRunFlags3="-D TIMING_STATS=1"
+    CXXFLAGS += -DNTHREADS=$(NTHREADS) -DTIMING_STATS=1
 endif
 
 ifdef NBLOCKS_PER_MULTI
-	testRunFlags2="-D NBLOCKS_PER_MULTI=$(NBLOCKS_PER_MULTI)"
-	testRunFlags3="-D TIMING_STATS=1"
+    CXXFLAGS += -DNBLOCKS_PER_MULTI=$(NBLOCKS_PER_MULTI) -DTIMING_STATS=1
 endif
 
-OFLAGS = -g -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
 
-#Use below if compiling with CPU_SUPPORT (SSE)
-#CXXFLAGS += ${testRunFlags} -fPIC $(OFLAGS) -I$(CUDA_TK)/include -msse4
-CXXFLAGS += ${testRunFlags} -fPIC $(OFLAGS) -I$(CUDA_TK)/include
+# CUDA kernels
+ifeq ($(BACKEND), CUDA)
 
-testRunFlags= $(testRunFlags1) $(testRunFlags2) $(testRunFlags3)
-$(info $(testRunFlags))
+INCLUDES = -I$(CUDA_TK)
+LDFLAGS += -lcuda -fopenmp
 
-NVCC      = $(CUDA_TK)/bin/nvcc
+CUDA_SRC = $(wildcard CUDAKernels/*.cu)
+PTX = $(CUDA_SRC:CUDAKernels/%.cu=CUDAKernels/%.ptx)
+# The .ptxh version seems to be unused
+PTXH = $(CUDA_SRC:CUDAKernels/%.cu=include/%.ptxh)
+NVCCFLAGS += -I./include -I.
 
+.PHONY: kernels
+kernels: $(PTX) $(PTXH)
 
-# Support older CUDA versions out of the box
-NVCCVERSION=$(shell "${NVCC}" --version | grep ^Cuda | sed 's/^.* //g')
-ifeq "${NVCCVERSION}" "V5.5.22"
-	NVCCFLAGS ?= -arch sm_20
-else
-	NVCCFLAGS ?= -arch sm_50
-endif
-
-#NVCCFLAGS = -arch sm_35
-#NVCCFLAGS ?= -arch sm_30
-#NVCCFLAGS = -arch sm_20
-NVCCFLAGS +=  ${testRunFlags}
-
-# Use with Mac OS X
-# NVCCFLAGS = -arch sm_12 -Xcompiler="-Duint=unsigned\ int"
-
-LDFLAGS = -lcuda -fopenmp 
-
-
-INCLUDEPATH = ./include
-CXXFLAGS  += -I$(INCLUDEPATH) -I./
-NVCCFLAGS += -I$(INCLUDEPATH) -I./
-
-INTERFACEPATH =./interfaces
-
-CUDAKERNELSPATH = ./CUDAKernels
-CUDAKERNELS = kernels.cu
-
-CUDAPTX = $(CUDAKERNELS:%.cu=$(CUDAKERNELSPATH)/%.ptx)
-
-SRCPATH = src
-SRC = sapporohostclass.cpp sapporoG6lib.cpp sapporoYeblib.cpp sapporoG5lib.cpp sapporo6thlib.cpp
-OBJ = $(SRC:%.cpp=%.o)
-
-LIBOBJ = sapporohostclass.o $(INTERFACEPATH)/sapporoG6lib.o $(INTERFACEPATH)/sapporoYeblib.o
-LIBOBJ += $(INTERFACEPATH)/sapporoG5lib.o $(INTERFACEPATH)/sapporo6thlib.o
-TARGET = libsapporo.a
-
-
-all:	  $(OBJ) $(CUDAPTX) $(TARGET)
-kernels:  $(CUDAPTX)
-
-
-$(TARGET): $(LIBOBJ)
-	ar qv $@ $^        
-
-%.o: $(SRCPATH)/%.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-$(CUDAKERNELSPATH)/%.ptx: $(CUDAKERNELSPATH)/%.cu
+%.ptx: %.cu
 	$(NVCC) $(NVCCFLAGS) -ptx $< -o $@
 
-$(INCLUDEPATH)/%.ptxh: $(CUDAKERNELSPATH)/%.ptx
+include/%.ptxh: CUDAKernels/%.ptx
 	xxd -i $< $@
 
+endif
+
+
+# OpenCL kernels
+ifeq ($(BACKEND), OpenCL)
+
+ifdef OPENCL
+    CXXFLAGS += -I$(OPENCL)/include
+    LDFLAGS += -L$(OPENCL)/lib
+endif
+
+INCLUDES =
+CXXFLAGS += -D_OCL_ -D__INCLUDE_KERNELS__
+LDFLAGS += -lOpenCL -fopenmp
+
+OPENCL_SRC = $(wildcard OpenCLKernels/*.cl)
+CLH = $(OPENCL_SRC:OpenCLKernels/%.cl=include/%.clh)
+
+.PHONY: kernels
+kernels: $(CLH)
+
+%.cle: %.cl
+	$(CC) -E -IOpenCLKernels -o $@ - <$<
+
+include/%.clh: OpenCLKernels/%.cle
+	xxd -i $< $@
+
+endif
+
+
+# Main implementation
+CXX_SRC := $(wildcard src/*.cpp)
+OBJS := $(CXX_SRC:%.cpp=%.o)
+INCLUDES = -Iinclude -I.
+CXXFLAGS += $(INCLUDES) -fPIC -g -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
+
+src/sapporohostclass.o: kernels
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+libsapporo.a: $(OBJS)
+	ar qv $@ $^
+
+libsapporo.so: $(OBJS)
+	$(CXX) -o $@ -shared $^ $(LDFLAGS)
+
+
+# API compatibility libraries
+EMU_SRC := $(wildcard interfaces/*lib.cpp)
+EMU_STATIC_LIBS := $(EMU_SRC:interfaces/%lib.cpp=lib%.a)
+EMU_SHARED_LIBS := $(EMU_SRC:interfaces/%lib.cpp=lib%.so)
+
+.PHONY: emulated_interfaces
+emulated_interfaces: $(EMU_STATIC_LIBS) $(EMU_SHARED_LIBS)
+
+lib%.a: interfaces/%lib.o
+	ar qv $@ $^
+
+lib%.so: interfaces/%lib.o
+	$(CXX) -o $@ -shared $^ -L. -lsapporo $(LDFLAGS)
+
+
+# Clean-up
+.PHONY: clean
 clean:
-	/bin/rm -rf *.o *.ptx *.a 
-	cd $(INTERFACEPATH); /bin/rm -rf *.o; cd ..
-	cd $(CUDAKERNELSPATH); /bin/rm -rf *.ptx; cd ..
-	rm -f *.ptxh $(INCLUDEPATH)/*.ptxh
-
-$(OBJ): $(INCLUDEPATH)/*.h
-
-
-sapporohostclass.o : $(INCLUDEPATH)/kernels.ptxh $(INCLUDEPATH)/sapporohostclass.h $(INCLUDEPATH)/sapdevclass.h $(INCLUDEPATH)/defines.h
-$(CUDAKERNELSPATH)/kernels.ptx : $(INCLUDEPATH)/defines.h
-
-libsapporo.a : sapporohostclass.o
-
-
-
-
-
-
-
+	rm -f src/*.o interfaces/*.o *.a *.so
+	rm -f CUDAKernels/*.ptx OpenCLKernels/*.cle
+	rm -f include/*.ptxh include/*.clh
 
