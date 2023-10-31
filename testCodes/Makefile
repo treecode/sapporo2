@@ -1,7 +1,4 @@
-CXX = g++
-CC  = gcc
-LD  = g++ 
-F90  = ifort
+CXX ?= g++
 
 .SUFFIXES: .o .cpp .ptx .cu
 
@@ -10,12 +7,12 @@ SAPLIB2 = sapporo
 SAPLIB = lib$(SAPLIB2).a
 
 
-CUDA_TK  = /usr/local/cuda
+CUDA_TK  ?= /usr/local/cuda
 
-OFLAGS = -g  -O3 -Wall -fopenmp -Wextra -Wstrict-aliasing=2 -fopenmp
-CXXFLAGS =  -fPIC $(OFLAGS) -I$(CUDA_TK)/include 
+OFLAGS = -g  -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
+CXXFLAGS +=  -fPIC -fopenmp $(OFLAGS) -I$(CUDA_TK)/include
 
-LDFLAGS = -lcuda -fopenmp  -L$(CUDA_TK)/lib64
+LDFLAGS += -lcuda -fopenmp -L$(CUDA_TK)/lib64
 
 INCLUDEPATH = $(SAPPOROPATH)/include 
 CXXFLAGS  += -I$(INCLUDEPATH) -I./ -I $(SAPPOROPATH)
@@ -34,31 +31,31 @@ kernels:
 	ln -s $(SAPPOROPATH)/CUDAKernels/ CUDA/
 
 #$(PROG): $(OBJ)
-#	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -lsapporo
+#	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -lsapporo
 
 test_gravity_block_cuda : test_gravity_block.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
 
 test_gravity_block_g5_cuda: test_gravity_block_g5.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
 
 test_gravity_block_6th_cuda : test_gravity_block_6th.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2)  $(LDFLAGS)   
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2)  $(LDFLAGS)
 
 test_performance_rangeN_cuda : test_performance_rangeN.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)  
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
 
 test_performance_blockStep_cuda : test_performance_blockStep.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
 
 test_performance_rangeN_6th_cuda : test_performance_rangeN_6th.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
 
 test_performance_rangeN_g5_cuda : test_performance_rangeN_g5.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
 
 test_integrator_cuda : test_integrator.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIBG6) $(LDFLAGS)
 
 
 %.o: $(SRCPATH)/%.cpp
