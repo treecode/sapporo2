@@ -86,15 +86,33 @@ With some luck a simple 'make' in the lib folder is sufficient to
 build the library, if not then here are some pointers:
 
 CUDA
-To build the CUDA library; Set the 'CUDA_TK' path to the location
-where the CUDA toolkit is installed e.g.. CUDA_TK = /usr/local/cuda and
-type: 'make' .
+
+If CUDA is installed via the nVidia installer, Conda, or HPC modules,
+then it should be detected automatically by the build system. If it
+somehow isn't, then you can try to set 'CUDA_TK' to the location where
+it is installed, e.g.
+
+CUDA_TK=/usr/local/cuda make
+
 
 OpenCL
-To build the CUDA library; Set the 'CUDA_TK' path to the location
-where the cuda or AMD OpenCL toolkit is installed eg. CUDA_TK =
-/usr/local/cuda or CUDA_TK = /opt/AMDAPP/ and type: 'make -f
-Makefile_ocl' .
+
+If OpenCL is installed in a standard location (e.g. via apt or yum),
+then it should be detected automatically by the build system. If it
+isn't, then you can set the 'OPENCL' variable to the location where
+it is installed, e.g.
+
+OPENCL=/opt/opencl make
+
+If both CUDA and OpenCL are detected, then CUDA is used by default.
+To select OpenCL, set BACKEND to OpenCL:
+
+BACKEND=OpenCL make
+
+You can combine these options as well:
+
+BACKEND=OpenCL OPENCL=/home/user/.local make
+
 
 Interfaces:
 The library has built-in support for a couple of default interfaces to
