@@ -574,8 +574,8 @@ namespace dev {
     void copy(const memory &src, const cl_bool OCL_BLOCKING = CL_TRUE) {
       assert(ContextFlag);
       if (n != src.n) {
-	ocl_free();
-	cmalloc(src.n, DeviceMemFlags);
+        ocl_free();
+        allocate(src.n, DeviceMemFlags);
       }
       oclSafeCall(clEnqueueCopyBuffer(CommandQueue,
                                       src.DeviceMem,
