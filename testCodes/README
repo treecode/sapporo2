@@ -1,7 +1,7 @@
 Sapporo2, test and example programs
 
 This folder contains a set of test and example programs that can
-be used with Sapporo2. 
+be used with Sapporo2.
 
 ===============================================================================
 
@@ -13,12 +13,18 @@ Makefile and Makefile_ocl (the CUDA_TK variable)
 To build the CUDA versions:
 'make'
 
-Tol build the OpenCL versions:
-'make -f Makefile_ocl' 
+To build the OpenCL versions:
+'make -f Makefile_ocl'
 
-In both cases make sure you build the matching sapporo library in the 'lib' folder.
+In both cases make sure you build the matching sapporo library in the 'lib' folder, and
+use
 
-Make sure that the GPU kernel sources and ptx files are in a subfolder 'CUDA' can be 
+'export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:../lib'
+
+to ensure the linker can find the sapporo2 libraries, or better, use the absolute path
+to the 'lib' directory.
+
+Make sure that the GPU kernel sources and ptx files are in a subfolder 'CUDA' can be
 symlinked from the lib folder. This is done by default in the Makefiles.
 
 ===============================================================================
@@ -38,12 +44,12 @@ USAGE / Examples
 
 How to start a 4th order test using different precision:
 CUDA, 4th order default
-./test_gravity_block_cuda  
+./test_gravity_block_cuda
 ./test_gravity_block_cuda 16364 -> number of particles is 16384 using CUDA
 ./test_gravity_block_ocl  16364 -> number of particles is 16384 using OpenCL
 
 ./test_gravity_block_cuda 16364 CUDA/kernels4thDP.ptx 1 1  ->
-  number of particles is 16384 using CUDA, using a full double precision kernel, with 
+  number of particles is 16384 using CUDA, using a full double precision kernel, with
   integration order 1 (=FOURTH order) with precision 1 (=DOUBLE precision)
 ./test_gravity_block_ocl 16364 OpenCL/kernels4thDP.cl 1 1  ->
   same as above but now using OpenCL.
