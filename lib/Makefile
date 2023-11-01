@@ -43,6 +43,7 @@ endif
 
 
 # Select backend
+ifeq ($(filter clean,$(MAKECMDGOALS)),)
 ifndef BACKEND
     ifdef CUDA_AVAILABLE
         $(info BACKEND not set and CUDA was detected, using CUDA)
@@ -71,6 +72,7 @@ else
         endif
         $(info Using selected backend OpenCL)
     endif
+endif
 endif
 $(info )
 
