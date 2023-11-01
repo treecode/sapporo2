@@ -90,6 +90,7 @@ endif
 ifeq ($(BACKEND), CUDA)
 
 INCLUDES = -I$(CUDA_TK)
+CXXFLAGS += -D__INCLUDE_KERNELS__
 LDFLAGS += -lcuda -fopenmp
 
 CUDA_SRC = $(wildcard CUDAKernels/*.cu)
