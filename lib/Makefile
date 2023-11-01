@@ -161,6 +161,11 @@ EMU_SHARED_LIBS := $(EMU_SRC:interfaces/%lib.cpp=lib%.so)
 .PHONY: emulated_interfaces
 emulated_interfaces: $(EMU_STATIC_LIBS) $(EMU_SHARED_LIBS)
 
+$(EMU_STATIC_LIBS): libsapporo.a
+
+$(EMU_SHARED_LIBS): libsapporo.so
+
+
 lib%.a: interfaces/%lib.o
 	ar qv $@ $^
 
