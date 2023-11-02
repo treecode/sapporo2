@@ -1,7 +1,4 @@
-CXX = g++
-CC  = gcc
-LD  = g++ 
-F90  = ifort
+CXX ?= g++
 
 .SUFFIXES: .o .cpp .ptx .cu
 
@@ -9,13 +6,13 @@ SAPPOROPATH=../lib/
 SAPLIB2 = sapporo_ocl
 SAPLIB = lib$(SAPLIB2).a
 
-CUDA_TK  = /usr/local/cuda
+CUDA_TK  ?= /usr/local/cuda
 #CUDA_TK  = /opt/AMDAPP/
 
-OFLAGS = -g -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp 
-CXXFLAGS =  -fPIC $(OFLAGS) -D_OCL_
+OFLAGS = -g -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
+CXXFLAGS +=  -fPIC -fopenmp $(OFLAGS) -D_OCL_
 
-LDFLAGS = -lOpenCL -fopenmp  
+LDFLAGS += -lOpenCL -fopenmp  
 
 INCLUDEPATH = $(SAPPOROPATH)/include 
 CXXFLAGS  += -I$(INCLUDEPATH) -I./ -I $(SAPPOROPATH) -I$(CUDA_TK)/include 
@@ -33,28 +30,28 @@ kernels:
 	ln -s $(SAPPOROPATH)/OpenCLKernels OpenCL
 
 test_gravity_block_ocl : test_gravity_block_ocl.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
 
 test_gravity_block_g5_ocl: test_gravity_block_g5_ocl.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
 
 test_gravity_block_6th_ocl : test_gravity_block_6th_ocl.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2)  $(LDFLAGS)   
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2)  $(LDFLAGS)   
 
 test_performance_rangeN_ocl : test_performance_rangeN_ocl.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2)  $(LDFLAGS) 
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2)  $(LDFLAGS) 
 
 test_performance_blockStep_ocl : test_performance_blockStep_ocl.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2)  $(LDFLAGS)
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2)  $(LDFLAGS)
 
 test_performance_rangeN_6th_ocl : test_performance_rangeN_6th_ocl.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
 
 test_performance_rangeN_g5_ocl : test_performance_rangeN_g5_ocl.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
 
 test_integrator_ocl : test_integrator_ocl.o
-	$(LD) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
 
 %_ocl.o: $(SRCPATH)/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
