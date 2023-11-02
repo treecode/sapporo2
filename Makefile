@@ -93,19 +93,17 @@ INCLUDES = -I$(CUDA_TK)
 CXXFLAGS += -D__INCLUDE_KERNELS__
 LDFLAGS += -lcuda -fopenmp
 
-CUDA_SRC = $(wildcard CUDAKernels/*.cu)
-PTX = $(CUDA_SRC:CUDAKernels/%.cu=CUDAKernels/%.ptx)
-# The .ptxh version seems to be unused
-PTXH = $(CUDA_SRC:CUDAKernels/%.cu=include/%.ptxh)
-NVCCFLAGS += -I./include -I.
+CUDA_SRC = $(wildcard src/CUDA/*.cu)
+PTX = $(CUDA_SRC:src/CUDA/%.cu=src/CUDA/%.ptx)
+PTXH = $(CUDA_SRC:src/CUDA/%.cu=src/CUDA/%.ptxh)
+NVCCFLAGS += -Isrc
 
-.PHONY: kernels
-kernels: $(PTX) $(PTXH)
+KERNELS = $(PTX) $(PTXH)
 
 %.ptx: %.cu
 	$(NVCC) $(NVCCFLAGS) -ptx $< -o $@
 
-include/%.ptxh: CUDAKernels/%.ptx
+src/CUDA/%.ptxh: src/CUDA/%.ptx
 	xxd -i $< $@
 
 endif
@@ -123,28 +121,28 @@ INCLUDES =
 CXXFLAGS += -D_OCL_ -D__INCLUDE_KERNELS__
 LDFLAGS += -lOpenCL -fopenmp
 
-OPENCL_SRC = $(wildcard OpenCLKernels/*.cl)
-CLH = $(OPENCL_SRC:OpenCLKernels/%.cl=include/%.clh)
+OPENCL_SRC = $(wildcard src/OpenCL/*.cl)
+CLE = $(OPENCL_SRC:src/OpenCL/%.cl=src/OpenCL/%.cle)
+CLH = $(OPENCL_SRC:src/OpenCL/%.cl=src/OpenCL/%.clh)
 
-.PHONY: kernels
-kernels: $(CLH)
+KERNELS = $(CLE) $(CLH)
 
 %.cle: %.cl
-	$(CC) -E -IOpenCLKernels -o $@ - <$<
+	$(CC) -E -Isrc -o $@ - <$<
 
-include/%.clh: OpenCLKernels/%.cle
+src/OpenCL/%.clh: src/OpenCL/%.cle
 	xxd -i $< $@
 
 endif
 
 
 # Main implementation
-CXX_SRC := $(wildcard src/*.cpp)
+CXX_SRC := $(wildcard src/*.cpp src/SSE_AVX/*.cpp)
 OBJS := $(CXX_SRC:%.cpp=%.o)
-INCLUDES = -Iinclude -I.
+INCLUDES = -Isrc
 CXXFLAGS += $(INCLUDES) -fPIC -g -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
 
-src/sapporohostclass.o: kernels
+src/sapporohostclass.o: $(KERNELS)
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -157,9 +155,9 @@ libsapporo.so: $(OBJS)
 
 
 # API compatibility libraries
-EMU_SRC := $(wildcard interfaces/*lib.cpp)
-EMU_STATIC_LIBS := $(EMU_SRC:interfaces/%lib.cpp=lib%.a)
-EMU_SHARED_LIBS := $(EMU_SRC:interfaces/%lib.cpp=lib%.so)
+EMU_SRC := $(wildcard src/interfaces/*lib.cpp)
+EMU_STATIC_LIBS := $(EMU_SRC:src/interfaces/%lib.cpp=lib%.a)
+EMU_SHARED_LIBS := $(EMU_SRC:src/interfaces/%lib.cpp=lib%.so)
 
 .PHONY: emulated_interfaces
 emulated_interfaces: $(EMU_STATIC_LIBS) $(EMU_SHARED_LIBS)
@@ -169,17 +167,16 @@ $(EMU_STATIC_LIBS): libsapporo.a
 $(EMU_SHARED_LIBS): libsapporo.so
 
 
-lib%.a: interfaces/%lib.o
+lib%.a: src/interfaces/%lib.o
 	ar qv $@ $^
 
-lib%.so: interfaces/%lib.o
+lib%.so: src/interfaces/%lib.o
 	$(CXX) -o $@ -shared $^ -L. -lsapporo $(LDFLAGS)
 
 
 # Clean-up
 .PHONY: clean
 clean:
-	rm -f src/*.o interfaces/*.o *.a *.so
-	rm -f CUDAKernels/*.ptx OpenCLKernels/*.cle
-	rm -f include/*.ptxh include/*.clh
+	rm -f *.a *.so src/*.o src/SSE_AVX/SSE/*.o src/SSE_AVX/AVX/*.o
+	rm -f src/CUDA/*.ptx src/CUDA/*.ptxh src/OpenCL/*.cle src/OpenCL/*.clh
 

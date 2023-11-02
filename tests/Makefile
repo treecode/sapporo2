@@ -5,7 +5,7 @@ F90  ?= ifort
 
 .SUFFIXES: .o .cpp .ptx .cu
 
-SAPPOROPATH=../lib/
+SAPPOROPATH=../
 SAPLIB2 = sapporo
 SAPLIB = lib$(SAPLIB2).a
 SAPLIBG6 = sapporoG6
@@ -19,7 +19,7 @@ CXXFLAGS +=  -fPIC -fopenmp $(OFLAGS) -I$(CUDA_TK)/include
 LDFLAGS += -lcuda -L$(CUDA_TK)/lib64
 
 INCLUDEPATH = $(SAPPOROPATH)/include 
-CXXFLAGS  += -I$(INCLUDEPATH) -I./ -I $(SAPPOROPATH)
+CXXFLAGS  += -I$(INCLUDEPATH) -I./ -I $(SAPPOROPATH)/src
 
 
 SRCPATH = src

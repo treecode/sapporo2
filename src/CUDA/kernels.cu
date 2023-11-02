@@ -15,7 +15,7 @@ Sixt order hermite, in double precision, including neighbour lists
 
 #include <stdio.h>
 
-#include "include/defines.h"
+#include "defines.h"
 
 #define inout
 #define __out

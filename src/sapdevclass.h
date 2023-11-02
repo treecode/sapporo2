@@ -12,7 +12,7 @@ to allocate, load, start functions, etc.
 */
 
 #ifdef _OCL_
-  #include "include/ocldev.h"
+  #include "ocldev.h"
 
   typedef cl_float2 float2;
   typedef cl_float4 float4;
@@ -28,7 +28,7 @@ to allocate, load, start functions, etc.
   typedef cl_int4 int4;
 
 #else
-  #include "include/cudadev.h"
+  #include "cudadev.h"
 #endif
 
 #include <cassert>
@@ -37,7 +37,7 @@ to allocate, load, start functions, etc.
 
 #include <sys/time.h>
 
-#include "include/defines.h"
+#include "defines.h"
 
 namespace sapporo2 {
 

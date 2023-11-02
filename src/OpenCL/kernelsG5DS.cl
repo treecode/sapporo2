@@ -4,47 +4,47 @@ Sapporo 2 device kernels
 GRAPE5
 
 Version 1.0
-CUDA single precisin kernels
+OpenCL Double Single kernels
 
 */
 
-#include "sharedKernels.cl"
+
+#include "OpenCL/sharedKernels.cl"
+
 
 
 __inline void body_body_interaction(inout float4     *acc_i,                                       
-                                    const float4     pos_i,                                       
-                                    const float4     pos_j, 
+                                    const DS4     pos_i,                                       
+                                    const DS4     pos_j, 
                                     const float      EPS2) {
 
-  const float3 dr = {(pos_j.x - pos_i.x) , (pos_j.y-  pos_i.y) ,(pos_j.z - pos_i.z)};   // 3x3 = 9 FLOP
+  const float3 dr = {(pos_j.x.x - pos_i.x.x) + (pos_j.x.y - pos_i.x.y),
+                     (pos_j.y.x - pos_i.y.x) + (pos_j.y.y - pos_i.y.y),
+                     (pos_j.z.x - pos_i.z.x) + (pos_j.z.y - pos_i.z.y)};   // 3x3 = 9 FLOP
 
   const float ds2 = ((dr.x*dr.x + (dr.y*dr.y)) + dr.z*dr.z);
 
   //EPS is in GRAPE5 always non-zero, if it is zero well then behaviour is undefined
   const float inv_ds  = rsqrt(ds2 + EPS2);
 
-  /*if((ds2 + EPS2) == 0)
-    inv_ds = 0;
-  */
+  
+/*if((ds2 + EPS2) == 0)
+  inv_ds = 0;
+*/
 
   const float inv_ds2 = inv_ds*inv_ds;                         
-  const float inv_ds3 = pos_j.w * inv_ds*inv_ds2;             //pos_j.w is mass
+  const float inv_ds3 = pos_j.w.x * inv_ds*inv_ds2;            //  pos_j.w.x is mass
   
   // 3*4 + 3 = 15 FLOP
   (*acc_i).x += ((inv_ds3 * dr.x));
   (*acc_i).y += ((inv_ds3 * dr.y));
   (*acc_i).z += ((inv_ds3 * dr.z));
   
-  (*acc_i).w += (pos_j.w * inv_ds);      //Potential
+  (*acc_i).w += (pos_j.w.x * inv_ds);      //Potential
+  
 }
 
-
-/*
- *  blockDim.x = ni
- *  gridDim.x  = 16, 32, 64, 128, etc. 
- */ 
-
-__kernel void dev_evaluate_gravity_second_float(
+__kernel void dev_evaluate_gravity_second_DS(
                                      const          int        nj_total, 
                                      const          int        nj,
                                      const          int        ni_offset,    
@@ -62,7 +62,7 @@ __kernel void dev_evaluate_gravity_second_float(
                                      __out __global int        *ngb_list,
                                      const __global double4    *acc_i_in,
                                      const __global double4    *acc_j,                                 
-                                           __local  float4     *shared_pos)
+                                           __local  DS4        *shared_pos)
 {
   const int tx = threadIdx_x;
   const int ty = threadIdx_y;
@@ -71,9 +71,9 @@ __kernel void dev_evaluate_gravity_second_float(
   
   const float EPS2 = (float)EPS2_d;
 
-  float4 pos;
-  pos.x = pos_i[tx+ni_offset].x; pos.y = pos_i[tx+ni_offset].y;
-  pos.z = pos_i[tx+ni_offset].z; pos.w = pos_i[tx+ni_offset].w;
+  DS4 pos;
+  pos.x = to_DS(pos_i[tx+ni_offset].x); pos.y = to_DS(pos_i[tx+ni_offset].y);
+  pos.z = to_DS(pos_i[tx+ni_offset].z); pos.w = to_DS(pos_i[tx+ni_offset].w);
 
   const float LARGEnum = 1.0e10f;
   float4 acc = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -89,15 +89,15 @@ __kernel void dev_evaluate_gravity_second_float(
     if (i + tx < nj_total) 
     {
       const double4 jp     = pos_j[i + tx];
-      shared_pos[addr].x = jp.x;
-      shared_pos[addr].y = jp.y;
-      shared_pos[addr].z = jp.z;
-      shared_pos[addr].w = jp.w;
+      shared_pos[addr].x   = to_DS(jp.x);
+      shared_pos[addr].y   = to_DS(jp.y);
+      shared_pos[addr].z   = to_DS(jp.z);
+      shared_pos[addr].w   = to_DS(jp.w);      
     } else {
-      shared_pos[addr].x = LARGEnum;
-      shared_pos[addr].y = LARGEnum;
-      shared_pos[addr].z = LARGEnum;
-      shared_pos[addr].w = 0.0f; 
+      shared_pos[addr].x = (float2){LARGEnum, 0.0f};
+      shared_pos[addr].y = (float2){LARGEnum, 0.0f};
+      shared_pos[addr].z = (float2){LARGEnum, 0.0f};
+      shared_pos[addr].w = (float2){0.0f,  -1.0f}; 
     }
 
     __syncthreads();
@@ -172,6 +172,4 @@ __kernel void dev_evaluate_gravity_second_float(
   
 
 }
-
-
 

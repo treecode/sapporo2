@@ -79,7 +79,7 @@ inline const char* get_kernelName(const int integrator,
   
   //Here we come if all switch/case/if combo's failed
   fprintf(stderr,"ERROR: Unknown combination of integrator type ( %d ) and precision ( %d ) \n", integrator, precision);
-  fprintf(stderr,"ERROR: See 'include/defines.h' for the possible combinations \n");
+  fprintf(stderr,"ERROR: See 'defines.h' for the possible combinations \n");
   exit(0);
   return "";
 }

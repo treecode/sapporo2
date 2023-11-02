@@ -2,8 +2,8 @@ CXX ?= g++
 
 .SUFFIXES: .o .cpp .ptx .cu
 
-SAPPOROPATH=../lib/
-SAPLIB2 = sapporo_ocl
+SAPPOROPATH=..
+SAPLIB2 = sapporo
 SAPLIB = lib$(SAPLIB2).a
 
 CUDA_TK  ?= /usr/local/cuda
@@ -14,8 +14,8 @@ CXXFLAGS +=  -fPIC -fopenmp $(OFLAGS) -D_OCL_
 
 LDFLAGS += -lOpenCL -fopenmp  
 
-INCLUDEPATH = $(SAPPOROPATH)/include 
-CXXFLAGS  += -I$(INCLUDEPATH) -I./ -I $(SAPPOROPATH) -I$(CUDA_TK)/include 
+INCLUDEPATH = $(SAPPOROPATH)/include
+CXXFLAGS  += -I$(INCLUDEPATH) -I./ -I $(SAPPOROPATH)/src -I$(CUDA_TK)/include
 
 
 SRCPATH = src
