@@ -1,5 +1,6 @@
 CXX ?= g++
 CC ?= gcc
+PREFIX ?= /usr/local
 
 CUDA_TK  ?= $(CUDA_HOME)
 .PHONY: all
@@ -172,6 +173,34 @@ lib%.a: src/interfaces/%lib.o
 
 lib%.so: src/interfaces/%lib.o
 	$(CXX) -o $@ -shared $^ -L. -lsapporo $(LDFLAGS)
+
+
+# Installation
+INSTALLED_LIBS := $(PREFIX)/lib/libsapporo.a $(PREFIX)/lib/libsapporo.so
+INSTALLED_LIBS += $(EMU_STATIC_LIBS:%.a=$(PREFIX)/lib/%.a)
+INSTALLED_LIBS += $(EMU_SHARED_LIBS:%.so=$(PREFIX)/lib/%.so)
+
+INSTALLED_LIBS: $(PREFIX)/lib
+
+HEADERS := $(wildcard include/*)
+INSTALLED_HEADERS := $(HEADERS:include/%=$(PREFIX)/include/%)
+
+INSTALLED_HEADERS: $(PREFIX)/include
+
+$(PREFIX)/include:
+	mkdir -p $(PREFIX)/include
+
+$(PREFIX)/include/%: include/% $(PREFIX)/include
+	install -m 644 $< $@
+
+$(PREFIX)/lib:
+	mkdir -p $(PREFIX)/lib
+
+$(PREFIX)/lib/%: % $(PREFIX)/lib
+	install -m 644 $< $@
+
+.PHONY: install
+install: $(INSTALLED_LIBS) $(INSTALLED_HEADERS)
 
 
 # Clean-up
