@@ -1,0 +1,4 @@
+gpu_backend:
+  - cuda
+  - opencl
+

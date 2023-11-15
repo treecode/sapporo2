@@ -1,0 +1,52 @@
+{% set name = "sapporo2" %}
+{% set version = "0.0.1" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: ../
+  # git_rev: work
+  # git_url: https://github.com/LourensVeen/sapporo2.git
+
+build:
+  number: 0
+  string: {{ gpu_backend }}
+
+  script_env:
+    - BACKEND=CUDA                # [gpu_backend == 'cuda']
+    - BACKEND=OpenCL              # [gpu_backend == 'opencl']
+  script: make install
+
+  missing_dso_whitelist:
+    - "*/libcuda.so"
+
+requirements:
+  build:
+    - {{ compiler('cxx') }}
+    - git
+    - git-lfs
+    - make
+    - cuda-compiler               # [linux and gpu_backend == 'cuda']
+    # - conda-verify
+
+  host:
+    - ocl-icd                     # [linux and gpu_backend == 'opencl']
+    - ocl_icd_wrapper_apple       # [osx and gpu_backend == 'opencl']
+    - khronos-opencl-icd-loader   # [osx and gpu_backend == 'opencl']
+
+  run:
+    - cuda-runtime                # [linux and gpu_backend == 'cuda']
+    - libgcc-ng
+    - libstdcxx-ng
+    - _openmp_mutex
+
+test:
+
+about:
+  home: https://github.com/treecode/sapporo2
+  summary: Library for emulating GRAPE6 n-body calculations
+  license: GPL-3.0-only
+  license_family: GPL
+  license_file: LICENSE
