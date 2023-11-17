@@ -31,7 +31,7 @@ ifdef OPENCL
     OPENCL_LDFLAGS := -L$(OPENCL)/lib -lOpenCL
 endif
 
-OPENCL_STATUS := $(shell echo 'int main() {}' | g++ -x c++ $(OPENCL_LDFLAGS) - && rm a.out || echo NOTFOUND)
+OPENCL_STATUS := $(shell echo 'int main() {}' | $(CXX) -x c++ $(OPENCL_LDFLAGS) - && rm a.out || echo NOTFOUND)
 
 ifeq ($(OPENCL_STATUS), NOTFOUND)
     $(info OpenCL support was not detected on the system.)
