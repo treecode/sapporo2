@@ -29,12 +29,12 @@ requirements:
     - git-lfs
     - make
     - cuda-compiler               # [linux and gpu_backend == 'cuda']
+    - pocl                        # [linux and gpu_backend == 'opencl']
+    - vim
     # - conda-verify
 
   host:
     - ocl-icd                     # [linux and gpu_backend == 'opencl']
-    - ocl_icd_wrapper_apple       # [osx and gpu_backend == 'opencl']
-    - khronos-opencl-icd-loader   # [osx and gpu_backend == 'opencl']
 
   run:
     - cuda-runtime                # [linux and gpu_backend == 'cuda']
