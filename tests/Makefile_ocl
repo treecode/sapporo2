@@ -27,7 +27,7 @@ PROG = test_gravity_block_ocl test_gravity_block_6th_ocl test_performance_rangeN
 all: $(OBJ) $(PROG) kernels
 
 kernels:
-	ln -s $(SAPPOROPATH)/OpenCLKernels OpenCL
+	rm -f OpenCL && ln -s $(SAPPOROPATH)/OpenCL OpenCL
 
 test_gravity_block_ocl : test_gravity_block_ocl.o
 	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)

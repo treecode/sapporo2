@@ -22,18 +22,18 @@
 #endif
 
 #ifdef __INCLUDE_KERNELS__
-extern unsigned char OpenCLKernels_kernels4th_cle[];
-extern unsigned int OpenCLKernels_kernels4th_cle_len;
-extern unsigned char OpenCLKernels_kernels4thDP_cle[];
-extern unsigned int OpenCLKernels_kernels4thDP_cle_len;
-extern unsigned char OpenCLKernels_kernels6th_cle[];
-extern unsigned int OpenCLKernels_kernels6th_cle_len;
-extern unsigned char OpenCLKernels_kernelsG5DS_cle[];
-extern unsigned int OpenCLKernels_kernelsG5DS_cle_len;
-extern unsigned char OpenCLKernels_kernelsG5SP_cle[];
-extern unsigned int OpenCLKernels_kernelsG5SP_cle_len;
-extern unsigned char OpenCLKernels_sharedKernels_cle[];
-extern unsigned int OpenCLKernels_sharedKernels_cle_len;
+extern unsigned char OpenCL_kernels4th_cle[];
+extern unsigned int OpenCL_kernels4th_cle_len;
+extern unsigned char OpenCL_kernels4thDP_cle[];
+extern unsigned int OpenCL_kernels4thDP_cle_len;
+extern unsigned char OpenCL_kernels6th_cle[];
+extern unsigned int OpenCL_kernels6th_cle_len;
+extern unsigned char OpenCL_kernelsG5DS_cle[];
+extern unsigned int OpenCL_kernelsG5DS_cle_len;
+extern unsigned char OpenCL_kernelsG5SP_cle[];
+extern unsigned int OpenCL_kernelsG5SP_cle_len;
+extern unsigned char OpenCL_sharedKernels_cle[];
+extern unsigned int OpenCL_sharedKernels_cle_len;
 #endif
 
 namespace dev {
@@ -70,8 +70,8 @@ namespace dev {
         int data_len = 0;
         if(temp.rfind("kernels4th.cl") != string::npos)
         { 
-            data = (char *) OpenCLKernels_kernels4th_cle;
-            data_len = OpenCLKernels_kernels4th_cle_len;
+            data = (char *) OpenCL_kernels4th_cle;
+            data_len = OpenCL_kernels4th_cle_len;
             fprintf(stderr, "Found compiled in version of file: %s\n", cFilename);
         } else {
             fprintf(stderr, "Could not find kernel file: %s\n", cFilename);

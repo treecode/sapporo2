@@ -131,8 +131,10 @@ KERNELS = $(CLE) $(CLH)
 %.cle: %.cl
 	$(CC) -E -Isrc -o $@ - <$<
 
+# xxd names the variable after the file name argument, and we expect
+# the variable to not have a src_ prefix, so we have to remove it.
 src/OpenCL/%.clh: src/OpenCL/%.cle
-	xxd -i $< $@
+	cd src && xxd -i $(<:src/%=%) $(@:src/%=%)
 
 endif
 
