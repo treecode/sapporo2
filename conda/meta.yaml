@@ -20,7 +20,7 @@ build:
   script: make install
 
   missing_dso_whitelist:
-    - "*/libcuda.so"
+    - "*/libcuda.so*"
 
 requirements:
   build:
