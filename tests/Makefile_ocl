@@ -5,6 +5,7 @@ CXX ?= g++
 SAPPOROPATH=..
 SAPLIB2 = sapporo
 SAPLIB = lib$(SAPLIB2).a
+SAPLIBG6 = sapporoG6
 
 CUDA_TK  ?= /usr/local/cuda
 #CUDA_TK  = /opt/AMDAPP/
@@ -51,22 +52,11 @@ test_performance_rangeN_g5_ocl : test_performance_rangeN_g5_ocl.o
 	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
 
 test_integrator_ocl : test_integrator_ocl.o
-	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
+	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) -l$(SAPLIBG6) $(LDFLAGS) 
 
 %_ocl.o: $(SRCPATH)/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 
 clean:
-	/bin/rm -rf *.o *.ptx *.a $(PROG)
-
-
-$(OBJ): $(SAPPOROPATH)/$(SAPLIB)
-
-
-
-
-
-
-
-
+	/bin/rm -rf *.o *.ptx *.a $(PROG) OpenCL

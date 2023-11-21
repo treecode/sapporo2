@@ -5,7 +5,7 @@ F90  ?= ifort
 
 .SUFFIXES: .o .cpp .ptx .cu
 
-SAPPOROPATH=../
+SAPPOROPATH=..
 SAPLIB2 = sapporo
 SAPLIB = lib$(SAPLIB2).a
 SAPLIBG6 = sapporoG6
@@ -68,14 +68,3 @@ test_integrator_cuda : test_integrator.o
 
 clean:
 	/bin/rm -rf *.o *.ptx *.a $(PROG) CUDA
-
-
-$(OBJ): $(SAPPOROPATH)/$(SAPLIB)
-
-
-
-
-
-
-
-
