@@ -12,7 +12,7 @@ source:
 
 build:
   number: 0
-  string: {{ gpu_backend }}
+  string: {{ gpu_backend }}_{{ PKG_BUILDNUM }}
 
   script_env:
     - BACKEND=CUDA                # [gpu_backend == 'cuda']
