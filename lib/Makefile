@@ -5,7 +5,7 @@ F90  = ifort
 
 .SUFFIXES: .o .cpp .ptx .cu
 
-CUDA_TK  ?= /usr/local/cuda
+CUDA_TK  ?= $(dir $(dir $(shell which nvcc)))
 
 
 testRunFlags1=
@@ -41,7 +41,7 @@ NVCCVERSION=$(shell "${NVCC}" --version | grep ^Cuda | sed 's/^.* //g')
 ifeq "${NVCCVERSION}" "V5.5.22"
 	NVCCFLAGS ?= -arch sm_20
 else
-	NVCCFLAGS ?= -arch sm_30
+	NVCCFLAGS ?= -arch sm_89
 endif
 
 #NVCCFLAGS = -arch sm_35
