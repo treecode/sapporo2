@@ -202,13 +202,13 @@ namespace dev {
 	// ctxCreateFlags |= CU_CTX_LMEM_RESIZE_TO_MAX;
 
 	//Create the context for this device handle
-	cuSafeCall(cuCtxCreate(&Context, ctxCreateFlags, Device));
+	cuSafeCall(cuCtxCreate(&Context, NULL, ctxCreateFlags, Device));
       } else {
 	int dev = 0;
 	while(1) {
 	  fprintf(stderr, "Trying device %d \n", (int)dev);
 	  cuSafeCall(cuDeviceGet(&Device, dev));
-	  if(cuCtxCreate(&Context, ctxCreateFlags, Device) != CUDA_SUCCESS) {
+	  if(cuCtxCreate(&Context, NULL, ctxCreateFlags, Device) != CUDA_SUCCESS) {
 	    dev = (dev + 1)  % DeviceCount;
 	  } else {
 	    devId = dev;
@@ -711,9 +711,9 @@ namespace dev {
         //         }
 
         
-        if(computeMode < CU_TARGET_COMPUTE_20)
+        if(computeMode < CU_TARGET_COMPUTE_60)
         {
-          fprintf(stderr,"Sapporo2 requires at least a Fermi or newer NVIDIA architecture.\n");
+          fprintf(stderr,"Sapporo2 requires at least a Pascal (sm_60) or newer NVIDIA architecture.\n");
           exit(-1);
         }
 
