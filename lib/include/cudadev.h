@@ -188,6 +188,11 @@ namespace dev {
     void createQueue(const int dev = 0, const int ctxCreateFlags = 0) {
       //use CU_CTX_MAP_HOST as flag for zero-copy memory
 
+      CUresult res;
+      #if CUDA_VERSION >= 13000
+          CUctxCreateParams params = {0};
+      #endif
+
       assert(!ContextFlag);
       assert(InitFlag);
       devId = dev;
@@ -202,13 +207,22 @@ namespace dev {
 	// ctxCreateFlags |= CU_CTX_LMEM_RESIZE_TO_MAX;
 
 	//Create the context for this device handle
-	cuSafeCall(cuCtxCreate(&Context, ctxCreateFlags, Device));
+        #if CUDA_VERSION >= 13000
+	    res = cuCtxCreate(&Context, &params, ctxCreateFlags, Device);
+        #else
+            res = cuCtxCreate(&Context, ctxCreateFlags, Device);
+        #endif
       } else {
 	int dev = 0;
 	while(1) {
 	  fprintf(stderr, "Trying device %d \n", (int)dev);
 	  cuSafeCall(cuDeviceGet(&Device, dev));
-	  if(cuCtxCreate(&Context, ctxCreateFlags, Device) != CUDA_SUCCESS) {
+          #if CUDA_VERSION >= 13000
+	      res = cuCtxCreate(&Context, &params, ctxCreateFlags, Device);
+          #else
+              res = cuCtxCreate(&Context, ctxCreateFlags, Device);
+          #endif
+	  if(res != CUDA_SUCCESS) {
 	    dev = (dev + 1)  % DeviceCount;
 	  } else {
 	    devId = dev;
@@ -711,9 +725,9 @@ namespace dev {
         //         }
 
         
-        if(computeMode < CU_TARGET_COMPUTE_20)
+        if(computeMode < CU_TARGET_COMPUTE_60)
         {
-          fprintf(stderr,"Sapporo2 requires at least a Fermi or newer NVIDIA architecture.\n");
+          fprintf(stderr,"Sapporo2 requires at least a Pascal (sm_60) or newer NVIDIA architecture.\n");
           exit(-1);
         }
 
