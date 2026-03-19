@@ -202,13 +202,34 @@ namespace dev {
 	// ctxCreateFlags |= CU_CTX_LMEM_RESIZE_TO_MAX;
 
 	//Create the context for this device handle
-	cuSafeCall(cuCtxCreate(&Context, NULL, ctxCreateFlags, Device));
+        #if CUDA_VERSION >= 13000
+            CUctxCreateParams params = {0};
+        #endif
+
+        CUresult res;
+
+        #if CUDA_VERSION >= 13000
+	    res = cuCtxCreate(&Context, &params, ctxCreateFlags, Device);
+        #else
+            res = cuCtxCreate(&Context, ctxCreateFlags, Device);
+        #endif
       } else {
 	int dev = 0;
 	while(1) {
 	  fprintf(stderr, "Trying device %d \n", (int)dev);
 	  cuSafeCall(cuDeviceGet(&Device, dev));
-	  if(cuCtxCreate(&Context, NULL, ctxCreateFlags, Device) != CUDA_SUCCESS) {
+          #if CUDA_VERSION >= 13000
+              CUctxCreateParams params = {0};
+          #endif
+
+          CUresult res;
+
+          #if CUDA_VERSION >= 13000
+	      res = cuCtxCreate(&Context, &params, ctxCreateFlags, Device);
+          #else
+              res = cuCtxCreate(&Context, ctxCreateFlags, Device);
+          #endif
+	  if(res != CUDA_SUCCESS) {
 	    dev = (dev + 1)  % DeviceCount;
 	  } else {
 	    devId = dev;
