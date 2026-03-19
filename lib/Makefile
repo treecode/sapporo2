@@ -5,7 +5,7 @@ F90  = ifort
 
 .SUFFIXES: .o .cpp .ptx .cu
 
-CUDA_TK  ?= $(dir $(dir $(shell which nvcc)))
+CUDA_TK  ?= $(CUDA_HOME)
 
 
 testRunFlags1=
