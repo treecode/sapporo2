@@ -188,6 +188,11 @@ namespace dev {
     void createQueue(const int dev = 0, const int ctxCreateFlags = 0) {
       //use CU_CTX_MAP_HOST as flag for zero-copy memory
 
+      CUresult res;
+      #if CUDA_VERSION >= 13000
+          CUctxCreateParams params = {0};
+      #endif
+
       assert(!ContextFlag);
       assert(InitFlag);
       devId = dev;
@@ -203,12 +208,6 @@ namespace dev {
 
 	//Create the context for this device handle
         #if CUDA_VERSION >= 13000
-            CUctxCreateParams params = {0};
-        #endif
-
-        CUresult res;
-
-        #if CUDA_VERSION >= 13000
 	    res = cuCtxCreate(&Context, &params, ctxCreateFlags, Device);
         #else
             res = cuCtxCreate(&Context, ctxCreateFlags, Device);
@@ -218,12 +217,6 @@ namespace dev {
 	while(1) {
 	  fprintf(stderr, "Trying device %d \n", (int)dev);
 	  cuSafeCall(cuDeviceGet(&Device, dev));
-          #if CUDA_VERSION >= 13000
-              CUctxCreateParams params = {0};
-          #endif
-
-          CUresult res;
-
           #if CUDA_VERSION >= 13000
 	      res = cuCtxCreate(&Context, &params, ctxCreateFlags, Device);
           #else
