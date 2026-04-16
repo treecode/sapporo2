@@ -31,8 +31,8 @@ namespace SIMD
 namespace SIMD
 {
 
-#include "avx_fp32.h"
-#include "avx_fp64.h"
+#include "SSE_AVX/avx_fp32.h"
+#include "SSE_AVX/avx_fp64.h"
 
   template<int ch, class T>
     T broadcast(const T x) { return T::template broadcast<ch>(x); }

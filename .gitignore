@@ -1,5 +1,8 @@
 *.o
 *.a
+*.so
 *~
 *.ptx
 *.ptxh
+*.cle
+*.clh

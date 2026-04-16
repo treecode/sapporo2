@@ -18,14 +18,14 @@ vel_j.w = eps2
 
 #ifdef __INCLUDE_KERNELS__
 #ifdef _OCL_
-#include "kernels4th.clh"
-#include "kernels4thDP.clh"
-#include "kernels6th.clh"
-#include "kernelsG5DS.clh"
-#include "kernelsG5SP.clh"
-#include "sharedKernels.clh"
+#include "OpenCL/kernels4th.clh"
+#include "OpenCL/kernels4thDP.clh"
+#include "OpenCL/kernels6th.clh"
+#include "OpenCL/kernelsG5DS.clh"
+#include "OpenCL/kernelsG5SP.clh"
+#include "OpenCL/sharedKernels.clh"
 #else
-#include "kernels.ptxh"
+#include "CUDA/kernels.ptxh"
 #endif
 #endif
 
