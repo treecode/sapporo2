@@ -2,7 +2,6 @@ CXX ?= g++
 CC ?= gcc
 PREFIX ?= /usr/local
 
-CUDA_TK  ?= $(CUDA_HOME)
 .PHONY: all
 all: libsapporo.a libsapporo.so emulated_interfaces
 
