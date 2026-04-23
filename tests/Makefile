@@ -38,28 +38,28 @@ kernels:
 #	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -lsapporo
 
 test_gravity_block_cuda : test_gravity_block.o
-	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
+	$(CXX) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
 
 test_gravity_block_g5_cuda: test_gravity_block_g5.o
-	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
+	$(CXX) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
 
 test_gravity_block_6th_cuda : test_gravity_block_6th.o
-	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2)  $(LDFLAGS)   
+	$(CXX) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2)  $(LDFLAGS)   
 
 test_performance_rangeN_cuda : test_performance_rangeN.o
-	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)  
+	$(CXX) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)  
 
 test_performance_blockStep_cuda : test_performance_blockStep.o
-	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
+	$(CXX) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
 
 test_performance_rangeN_6th_cuda : test_performance_rangeN_6th.o
-	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
+	$(CXX) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
 
 test_performance_rangeN_g5_cuda : test_performance_rangeN_g5.o
-	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
+	$(CXX) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
 
 test_integrator_cuda : test_integrator.o
-	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIBG6) $(LDFLAGS) 
+	$(CXX) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIBG6) $(LDFLAGS) 
 
 
 %.o: $(SRCPATH)/%.cpp
