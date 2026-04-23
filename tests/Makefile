@@ -28,11 +28,8 @@ OBJ = $(SRC:%.cpp=%.o)
 
 PROG = test_gravity_block_cuda test_gravity_block_g5_cuda test_gravity_block_6th_cuda test_performance_rangeN_cuda test_performance_blockStep_cuda test_performance_rangeN_6th_cuda test_performance_rangeN_g5_cuda test_integrator_cuda
 
-all: $(OBJ) $(PROG) kernels
+all: $(OBJ) $(PROG)
 
-
-kernels:
-	rm -f CUDA && ln -s $(SAPPOROPATH)/CUDA CUDA
 
 #$(PROG): $(OBJ)
 #	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -lsapporo
