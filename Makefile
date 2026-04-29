@@ -1,9 +1,12 @@
 CXX ?= g++
 CC ?= gcc
-PREFIX ?= /usr/local
+PREFIX ?= $(PWD)
 
 ifdef CUDA_HOME
-    CUDA_TK ?= $(CUDA_HOME)
+CUDA_TK ?= $(CUDA_HOME)
+endif 
+ifdef CUDA_PATH
+CUDA_TK ?= $(CUDA_PATH)
 endif
 
 .PHONY: all
@@ -93,7 +96,7 @@ endif
 # CUDA kernels
 ifeq ($(BACKEND), CUDA)
 
-INCLUDES = -I$(CUDA_TK)
+INCLUDES = -I$(CUDA_TK)/include
 CXXFLAGS += -D__INCLUDE_KERNELS__
 LDFLAGS += -lcuda -fopenmp
 
