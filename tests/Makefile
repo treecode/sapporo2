@@ -10,13 +10,19 @@ SAPLIB2 = sapporo
 SAPLIB = lib$(SAPLIB2).a
 SAPLIBG6 = sapporoG6
 
-
-CUDA_TK  ?= /usr/local/cuda
+ifdef CUDA_HOME
+CUDA_TK ?= $(CUDA_HOME)
+endif
+ifdef CUDA_PATH
+CUDA_TK ?= $(CUDA_PATH)
+else 
+CUDA_TK ?= /usr/local/cuda
+endif
 
 OFLAGS = -g  -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
 CXXFLAGS +=  -fPIC -fopenmp $(OFLAGS) -I$(CUDA_TK)/include 
 
-LDFLAGS += -lcuda -L$(CUDA_TK)/lib64
+LDFLAGS += -Wl,-rpath,'$$ORIGIN/..' -lcuda -L$(CUDA_TK)/lib64
 
 INCLUDEPATH = $(SAPPOROPATH)/include 
 CXXFLAGS  += -I$(INCLUDEPATH) -I./ -I $(SAPPOROPATH)/src
@@ -30,6 +36,9 @@ PROG = test_gravity_block_cuda test_gravity_block_g5_cuda test_gravity_block_6th
 
 all: $(OBJ) $(PROG)
 
+
+kernels:
+	rm -f CUDA && ln -s $(SAPPOROPATH)/src/CUDA CUDA
 
 #$(PROG): $(OBJ)
 #	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -lsapporo
@@ -56,7 +65,7 @@ test_performance_rangeN_g5_cuda : test_performance_rangeN_g5.o
 	$(CXX) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS) 
 
 test_integrator_cuda : test_integrator.o
-	$(CXX) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIBG6) $(LDFLAGS) 
+	$(CXX) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) -l$(SAPLIBG6) $(LDFLAGS) 
 
 
 %.o: $(SRCPATH)/%.cpp
