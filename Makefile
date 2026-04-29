@@ -111,7 +111,7 @@ KERNELS = $(PTX) $(PTXH)
 	$(NVCC) --forward-unknown-to-host-compiler $(CXXFLAGS) $(NVCCFLAGS) -ptx $< -o $@
 
 src/CUDA/%.ptxh: src/CUDA/%.ptx
-	xxd -i $< $@
+	xxd -i $< | sed 's/src_CUDA_/CUDAKernels_/g' > $@
 
 endif
 
