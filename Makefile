@@ -60,7 +60,7 @@ ifndef BACKEND
             $(info BACKEND not set and OpenCL was detected, using OpenCL)
             BACKEND := OpenCL
         else
-            $(error BACKEND not set and neither CUDA nor OpenGL was detected.)
+            $(error BACKEND not set and neither CUDA nor OpenCL was detected.)
         endif
     endif
 else
