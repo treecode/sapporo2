@@ -6,7 +6,7 @@ F90  ?= ifort
 .SUFFIXES: .o .cpp .ptx .cu
 
 SAPPOROPATH=..
-SAPLIB2 = sapporo
+SAPLIB2 = sapporo2
 SAPLIB = lib$(SAPLIB2).a
 SAPLIBG6 = sapporoG6
 
