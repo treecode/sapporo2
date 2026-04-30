@@ -1,13 +1,16 @@
 CXX ?= g++
 CC ?= gcc
-PREFIX ?= /usr/local
+PREFIX ?= $(PWD)
 
 ifdef CUDA_HOME
-    CUDA_TK ?= $(CUDA_HOME)
+CUDA_TK ?= $(CUDA_HOME)
+endif 
+ifdef CUDA_PATH
+CUDA_TK ?= $(CUDA_PATH)
 endif
 
 .PHONY: all
-all: libsapporo.a libsapporo.so emulated_interfaces
+all: libsapporo2.a libsapporo2.so emulated_interfaces
 
 
 # Detect CUDA
@@ -57,7 +60,7 @@ ifndef BACKEND
             $(info BACKEND not set and OpenCL was detected, using OpenCL)
             BACKEND := OpenCL
         else
-            $(error BACKEND not set and neither CUDA nor OpenGL was detected.)
+            $(error BACKEND not set and neither CUDA nor OpenCL was detected.)
         endif
     endif
 else
@@ -93,7 +96,7 @@ endif
 # CUDA kernels
 ifeq ($(BACKEND), CUDA)
 
-INCLUDES = -I$(CUDA_TK)
+INCLUDES = -I$(CUDA_TK)/include
 CXXFLAGS += -D__INCLUDE_KERNELS__
 LDFLAGS += -lcuda -fopenmp
 
@@ -108,7 +111,7 @@ KERNELS = $(PTX) $(PTXH)
 	$(NVCC) --forward-unknown-to-host-compiler $(CXXFLAGS) $(NVCCFLAGS) -ptx $< -o $@
 
 src/CUDA/%.ptxh: src/CUDA/%.ptx
-	xxd -i $< $@
+	xxd -i $< | sed 's/src_CUDA_/CUDAKernels_/g' > $@
 
 endif
 
@@ -153,10 +156,10 @@ src/sapporohostclass.o: $(KERNELS)
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-libsapporo.a: $(OBJS)
+libsapporo2.a: $(OBJS)
 	ar qv $@ $^
 
-libsapporo.so: $(OBJS)
+libsapporo2.so: $(OBJS)
 	$(CXX) -o $@ -shared $^ $(LDFLAGS)
 
 
@@ -168,20 +171,20 @@ EMU_SHARED_LIBS := $(EMU_SRC:src/interfaces/%lib.cpp=lib%.so)
 .PHONY: emulated_interfaces
 emulated_interfaces: $(EMU_STATIC_LIBS) $(EMU_SHARED_LIBS)
 
-$(EMU_STATIC_LIBS): libsapporo.a
+$(EMU_STATIC_LIBS): libsapporo2.a
 
-$(EMU_SHARED_LIBS): libsapporo.so
+$(EMU_SHARED_LIBS): libsapporo2.so
 
 
 lib%.a: src/interfaces/%lib.o
 	ar qv $@ $^
 
 lib%.so: src/interfaces/%lib.o
-	$(CXX) -o $@ -shared $^ -L. -lsapporo $(LDFLAGS)
+	$(CXX) -o $@ -shared $^ -L. -lsapporo2 $(LDFLAGS)
 
 
 # Installation
-INSTALLED_LIBS := $(PREFIX)/lib/libsapporo.a $(PREFIX)/lib/libsapporo.so
+INSTALLED_LIBS := $(PREFIX)/lib/libsapporo2.a $(PREFIX)/lib/libsapporo2.so
 INSTALLED_LIBS += $(EMU_STATIC_LIBS:%.a=$(PREFIX)/lib/%.a)
 INSTALLED_LIBS += $(EMU_SHARED_LIBS:%.so=$(PREFIX)/lib/%.so)
 
