@@ -210,6 +210,10 @@ $(PREFIX)/lib/%: % $(PREFIX)/lib
 .PHONY: install
 install: $(INSTALLED_LIBS) $(INSTALLED_HEADERS)
 
+.PHONY: uninstall
+uninstall:
+	rm -rf $(INSTALLED_LIBS) $(INSTALLED_HEADERS)
+
 
 # Clean-up
 .PHONY: clean
