@@ -1601,3 +1601,8 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
   return 0.0;
 } //end evaluate gravity
 
+
+int sapporo::get_nj_max() const
+{
+    return nj_max;
+}
