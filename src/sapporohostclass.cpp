@@ -159,7 +159,7 @@ int sapporo::open(std::string kernelFile, int *devices,
     
     //Allocate initial memory for 16k particles per device
     sapdevice->allocateMemory(16384, get_n_pipes());
-    nj_max = 16384;    
+    nj_max = 262144; //Initial max number of j-particles, can be increased if needed
   }//end pragma omp parallel
 
   //Used to store j-memory particle counters
@@ -461,7 +461,8 @@ int sapporo::set_j_particle(int    address,
     //Extra check, if we are still outside nj_max, we quit since particles are not
     //nicely send in order
     if (address >= nj_max) {
-      fprintf(stderr, "Increasing nj_max was not enough! Send particles in order to the library! Exit\n");
+      fprintf(stderr, "Increasing nj_max = %d was not enough, address = %d\n", nj_max, address);
+      fprintf(stderr, "Send particles in order to the library! Exit\n");
       exit(-1);
     }
   }
@@ -1601,3 +1602,8 @@ double sapporo::evaluate_gravity(int ni_total, int nj)
   return 0.0;
 } //end evaluate gravity
 
+
+int sapporo::get_nj_max() const
+{
+    return nj_max;
+}

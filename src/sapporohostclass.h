@@ -32,7 +32,10 @@ struct jCopyInfo
   int     toCopy;
 } typedef jCopyInfo;
 
-
+extern "C"
+{
+  int g6_get_nj_max_();
+}
 
 class sapporo {
 protected:
@@ -126,6 +129,7 @@ public:
            int order = FOURTH, int precision = DOUBLESINGLE);
   int close();
   int get_n_pipes();
+  int get_nj_max() const;
   int set_time(double ti);
   int set_no_time();
 
