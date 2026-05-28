@@ -147,8 +147,11 @@ extern "C" {
 //     return grav.calc_lasthalf2(*cluster_id, *nj, *ni,
 // 			       index, xi, vi, *eps2, h2, acc, jerk, pot, inn);
   }
-  
-    
+
+  int g6_get_nj_max_() {
+    return grav.get_nj_max();
+  }
+     
   void get_j_part_data(int addr, int nj,
                          double *pos, 
                          double *vel, 
