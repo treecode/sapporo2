@@ -3,7 +3,7 @@ CXX ?= g++
 .SUFFIXES: .o .cpp .ptx .cu
 
 SAPPOROPATH=..
-SAPLIB2 = sapporo
+SAPLIB2 = sapporo2
 SAPLIB = lib$(SAPLIB2).a
 SAPLIBG6 = sapporoG6
 
@@ -28,7 +28,7 @@ PROG = test_gravity_block_ocl test_gravity_block_6th_ocl test_performance_rangeN
 all: $(OBJ) $(PROG) kernels
 
 kernels:
-	rm -f OpenCL && ln -s $(SAPPOROPATH)/OpenCL OpenCL
+	rm -f OpenCL && ln -s $(SAPPOROPATH)/src/OpenCL OpenCL
 
 test_gravity_block_ocl : test_gravity_block_ocl.o
 	$(CXX) $(LDFLAGS) $^ -o $@ -L $(SAPPOROPATH) -l$(SAPLIB2) $(LDFLAGS)
