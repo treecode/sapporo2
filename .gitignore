@@ -7,3 +7,4 @@
 *.cle
 *.clh
 *.swp
+.backend.stamp

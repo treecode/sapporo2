@@ -151,6 +151,26 @@ OBJS := $(CXX_SRC:%.cpp=%.o)
 INCLUDES += -Isrc
 CXXFLAGS += $(INCLUDES) -fPIC -g -O3 -Wall -Wextra -Wstrict-aliasing=2 -fopenmp
 
+# The objects are backend-specific: the CUDA backend compiles cudadev.h while
+# the OpenCL backend compiles ocldev.h (selected by -D_OCL_). Make only tracks
+# file timestamps, not the value of BACKEND, so after building one backend a
+# subsequent build with the other backend would silently reuse the existing
+# objects and library. That produced the reported failure: an OpenCL test
+# linked against a CUDA-compiled libsapporo2 tried to cuModuleLoad() a .cl
+# source file, aborting with CUDA_ERROR_INVALID_IMAGE in cudadev.h.
+#
+# Record the active backend in a stamp file and depend on it so that switching
+# BACKEND forces the objects to be recompiled. The stamp is only rewritten when
+# the backend actually changes, so unchanged rebuilds stay incremental.
+BACKEND_STAMP := .backend.stamp
+
+.PHONY: FORCE
+$(BACKEND_STAMP): FORCE
+	@[ "$$(cat $@ 2>/dev/null)" = "$(BACKEND)" ] || \
+	    { echo "Backend changed to $(BACKEND), rebuilding objects"; echo "$(BACKEND)" > $@; }
+
+$(OBJS): $(BACKEND_STAMP)
+
 src/sapporohostclass.o: $(KERNELS)
 
 %.o: %.cpp
@@ -249,6 +269,7 @@ test: build-tests
 clean:
 	rm -f *.a *.so src/*.o src/SSE_AVX/SSE/*.o src/SSE_AVX/AVX/*.o
 	rm -f src/CUDA/*.ptx src/CUDA/*.ptxh src/OpenCL/*.cle src/OpenCL/*.clh
+	rm -f $(BACKEND_STAMP)
 	$(MAKE) -C tests -f Makefile clean
 	$(MAKE) -C tests -f Makefile_ocl clean
 
