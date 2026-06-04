@@ -275,7 +275,15 @@ namespace dev {
       fprintf(stderr, "Using platform %d \n", selected_platform);
       PlatformID = PlatformIDs[selected_platform];
 
-      oclSafeCall(clGetDeviceIDs(PlatformID, DeviceType, 0, NULL, &DeviceCount));
+      // Try to get devices of the requested type. If none are found for GPU,
+      // fall back to CPU devices (useful when using pocl or CPU-only runtimes).
+      cl_int ciErrNum = clGetDeviceIDs(PlatformID, DeviceType, 0, NULL, &DeviceCount);
+      if (ciErrNum == CL_DEVICE_NOT_FOUND && DeviceType == CL_DEVICE_TYPE_GPU) {
+        std::cerr << "No GPU devices found on platform, trying CPU devices...\n";
+        DeviceType = CL_DEVICE_TYPE_CPU;
+        ciErrNum = clGetDeviceIDs(PlatformID, DeviceType, 0, NULL, &DeviceCount);
+      }
+      oclSafeCall(ciErrNum);
 
       Devices.resize(DeviceCount);
       oclSafeCall(clGetDeviceIDs(PlatformID, DeviceType, DeviceCount, &Devices[0], &DeviceCount));
