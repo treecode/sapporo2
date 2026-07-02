@@ -215,9 +215,40 @@ uninstall:
 	rm -rf $(INSTALLED_LIBS) $(INSTALLED_HEADERS)
 
 
+# Tests
+# Build the test programs against the freshly built libraries and run the
+# GPU-vs-CPU performance tests for each supported integration order. The
+# backend selected above determines which test Makefile and binaries are used.
+ifeq ($(BACKEND), CUDA)
+    TEST_MAKEFILE := Makefile
+    TEST_SUFFIX := cuda
+else
+    TEST_MAKEFILE := Makefile_ocl
+    TEST_SUFFIX := ocl
+endif
+
+CORRECTNESS_TESTS := test_gravity_block_$(TEST_SUFFIX) \
+                     test_gravity_block_g5_$(TEST_SUFFIX) \
+                     test_gravity_block_6th_$(TEST_SUFFIX)
+
+.PHONY: build-tests
+build-tests: all
+	$(MAKE) -C tests -f $(TEST_MAKEFILE) CXX="$(CXX)" CC="$(CC)" \
+	    $(if $(CUDA_TK),CUDA_TK="$(CUDA_TK)")
+
+.PHONY: test
+test: build-tests
+	@for t in $(CORRECTNESS_TESTS); do \
+	    echo "=== Running $$t ==="; \
+	    ( cd tests && LD_LIBRARY_PATH="$(CURDIR):$$LD_LIBRARY_PATH" ./$$t ) || exit 1; \
+	done
+
+
 # Clean-up
 .PHONY: clean
 clean:
 	rm -f *.a *.so src/*.o src/SSE_AVX/SSE/*.o src/SSE_AVX/AVX/*.o
 	rm -f src/CUDA/*.ptx src/CUDA/*.ptxh src/OpenCL/*.cle src/OpenCL/*.clh
+	$(MAKE) -C tests -f Makefile clean
+	$(MAKE) -C tests -f Makefile_ocl clean
 

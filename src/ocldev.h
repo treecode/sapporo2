@@ -257,14 +257,29 @@ namespace dev {
         oclSafeCall(clGetPlatformInfo(PlatformIDs[dev], CL_PLATFORM_NAME, sizeof(platform_string), &platform_string, NULL));
 	std::cerr << " " << dev << ": " << platform_string << "\n";
       }
-      fprintf(stderr, "Using platform %d \n", platform_id);
-      PlatformID = PlatformIDs[platform_id];
+      
+      // Prefer NVIDIA platform if available.
+      int selected_platform = platform_id;
+      if (platform_id == 0 && numPlatforms > 1) {
+        for (cl_uint p = 0; p < numPlatforms; p++) {
+          char platform_string[1024];
+          oclSafeCall(clGetPlatformInfo(PlatformIDs[p], CL_PLATFORM_NAME, sizeof(platform_string), &platform_string, NULL));
+          if (strstr(platform_string, "NVIDIA") != NULL) {
+            std::cerr << "Found NVIDIA platform at index " << p << ", preferring it over others.\n";
+            selected_platform = p;
+            break;
+          }
+        }
+      }
+      
+      fprintf(stderr, "Using platform %d \n", selected_platform);
+      PlatformID = PlatformIDs[selected_platform];
 
       oclSafeCall(clGetDeviceIDs(PlatformID, DeviceType, 0, NULL, &DeviceCount));
 
       Devices.resize(DeviceCount);
       oclSafeCall(clGetDeviceIDs(PlatformID, DeviceType, DeviceCount, &Devices[0], &DeviceCount));
-
+    
       std::cerr << "Found " << DeviceCount << " suitable devices: \n";
       for (cl_uint dev = 0; dev < DeviceCount; dev++) {
 	char device_string[1024];
