@@ -217,7 +217,7 @@ uninstall:
 
 # Tests
 # Build the test programs against the freshly built libraries and run the
-# GPU-vs-CPU correctness tests for each supported integration order. The
+# GPU-vs-CPU performance tests for each supported integration order. The
 # backend selected above determines which test Makefile and binaries are used.
 ifeq ($(BACKEND), CUDA)
     TEST_MAKEFILE := Makefile
